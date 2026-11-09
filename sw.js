@@ -1,4 +1,4 @@
-const VERSION = 'v7';
+const VERSION = 'v9';
 const SHELL = `gijon-hoy-shell-${VERSION}`;
 const DATA = `gijon-hoy-data-${VERSION}`;
 const TILES = `gijon-hoy-tiles-${VERSION}`;
@@ -20,7 +20,10 @@ const SHELL_FILES = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' evita guardar copias antiguas de la caché HTTP del navegador.
+  event.waitUntil(caches.open(SHELL)
+    .then((cache) => cache.addAll(SHELL_FILES.map((file) => new Request(file, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -49,9 +52,11 @@ async function networkFirst(request) {
 // App: respuesta inmediata desde caché y actualización en segundo plano.
 async function staleWhileRevalidate(request, event) {
   const cache = await caches.open(SHELL);
-  const saved = await cache.match(request, { ignoreSearch: request.mode === 'navigate' });
-  const update = fetch(request).then((response) => {
-    if (response.ok) cache.put(request, response.clone());
+  // Todas las navegaciones comparten la misma entrada; no-cache obliga a revalidar con el servidor.
+  const key = request.mode === 'navigate' ? 'index.html' : request;
+  const saved = await cache.match(key);
+  const update = fetch(request.url, { cache: 'no-cache' }).then((response) => {
+    if (response.ok) cache.put(key, response.clone());
     return response;
   });
   if (saved) {

@@ -150,8 +150,9 @@ button, select, input { font: inherit; color: inherit; }
 }
 #view-hoy > .block { margin-top: 14px; }
 #view-hoy > .notices-block { margin: 0 0 14px; }
-.block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.block-head h2 { font-size: 1.08rem; }
+.block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.block-head h2 { display: flex; align-items: center; gap: 9px; font-size: 1.3rem; font-weight: 800; line-height: 1.2; letter-spacing: -.025em; }
+.block .block-head h2::before { content: ""; flex: none; width: 5px; height: 1.05em; border-radius: 99px; background: var(--accent); }
 .view.narrow > .block-head h2 { font-size: 1.6rem; letter-spacing: -.025em; }
 .block-head a { font-size: .84rem; font-weight: 600; white-space: nowrap; }
 
@@ -253,7 +254,7 @@ button, select, input { font: inherit; color: inherit; }
 }
 .date-box b { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; }
 .date-box small { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-.event h3, .notice h3 { font-size: .96rem; font-weight: 650; line-height: 1.32; overflow-wrap: anywhere; }
+.event h3, .notice h3 { font-size: .94rem; font-weight: 600; letter-spacing: -.005em; line-height: 1.35; overflow-wrap: anywhere; }
 .event h3 a, .notice h3 a { color: inherit; }
 .event p, .notice p { color: var(--muted); font-size: .83rem; }
 .event .live { color: var(--accent); font-weight: 700; }
@@ -446,6 +447,18 @@ button, select, input { font: inherit; color: inherit; }
 .pop .desc { display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .pop .go { display: inline-block; margin-top: 8px; font-weight: 700; }
 .leaflet-container .pop a { color: #0f766e; }
+
+/* Mapa oscuro: se oscurecen solo las teselas, sin tocar los puntos ni cambiar de proveedor. */
+@media (prefers-color-scheme: dark) {
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7); }
+  .leaflet-bar a, .leaflet-bar a:hover { background: var(--surface); color: var(--ink); border-color: var(--line); }
+  .leaflet-container .leaflet-control-attribution { background: rgb(15 23 42 / .82); color: var(--muted); }
+  .leaflet-container .leaflet-control-attribution a { color: var(--accent); }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--ink); }
+  .pop small { color: var(--muted); }
+  .leaflet-container .pop a { color: var(--accent); }
+  .leaflet-container a.leaflet-popup-close-button { color: var(--muted); }
+}
 
 @media (min-width: 900px) {
   :root { --top-h: 64px; }
