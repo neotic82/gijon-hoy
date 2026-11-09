@@ -482,6 +482,33 @@ button, select, input { font: inherit; color: inherit; }
 .layer-row > i[style*="#475569"], .chip i[style*="#475569"] { font-size: .56rem; }
 .pop .pop-note { color: #64748b; font-size: .74rem; }
 
+/* Ficha de acto */
+.event { position: relative; }
+.event-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+.event-open::after { content: ""; position: absolute; inset: 0; }
+.event-open:focus-visible { outline: none; }
+.event:has(.event-open:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.event-img { display: block; width: 100%; max-height: 210px; object-fit: cover; border-radius: 14px; margin-bottom: 12px; }
+.event-title { font-size: 1.22rem; font-weight: 800; line-height: 1.25; letter-spacing: -.02em; margin: 4px 0 6px; }
+.muted { color: var(--muted); font-size: .86rem; }
+.event-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.event-actions button, .event-actions .btn { display: flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface-2); color: var(--ink); font-size: .88rem; font-weight: 700; text-align: center; cursor: pointer; }
+.event-actions .btn:hover { text-decoration: none; }
+.event-actions .primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Tiempo y mar */
+.wx-now { display: flex; align-items: center; gap: 14px; }
+.wx-temp { font-size: 2.7rem; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
+.wx-text { font-size: 1.05rem; font-weight: 700; }
+.wx-sub { color: var(--muted); font-size: .84rem; }
+#weather .weather { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); }
+#weather .weather dd { white-space: nowrap; }
+.wx-hours { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 14px; }
+.wx-hours > div { display: flex; flex-direction: column; gap: 1px; padding: 8px 2px; border-radius: var(--radius-s); background: var(--surface-2); text-align: center; }
+.wx-hours small { color: var(--muted); font-size: .72rem; }
+.wx-hours b { font-size: 1rem; }
+.wx-sea { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-s); background: color-mix(in oklab, #1282a2 14%, var(--surface)); font-size: .9rem; }
+
 /* Mapa oscuro: se oscurecen solo las teselas, sin tocar los puntos ni cambiar de proveedor. */
 @media (prefers-color-scheme: dark) {
   .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7); }

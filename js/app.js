@@ -1,5 +1,5 @@
 import {
-  AIR_ID, AQI_LEVELS, CATEGORIES, EVENT_IDS, NOTICES_ID, POLLUTANT_LABELS, WATER_IDS, WEB_URLS,
+  AIR_ID, AQI_LEVELS, CATEGORIES, WEATHER_URLS, buildIcs, googleCalendarUrl, summarizeMarine, summarizeWeather, EVENT_IDS, NOTICES_ID, POLLUTANT_LABELS, WATER_IDS, WEB_URLS,
   DISTRICTS, MOBILITY, MOBILITY_COLOR, bathingForBeach, kmlUrl, parseKml, compareLines, dataUrl, distanceKm, districtCentroids, districtLabel, inDistrict, linesAffected, nearestDistrict, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces,
   occursBetween, plainText, summarizeAir, summarizeBathing, summarizeTapWater,
 } from './data.js';
@@ -20,6 +20,7 @@ const state = {
   places: {}, placesFailed: new Set(), mobility: {},
   stationId: store('station'),
   prefs: null,
+  weather: null, marine: null, weatherError: false,
   me: null,
   layersOn: new Set(CATEGORIES.filter((c) => c.on).map((c) => c.key).concat('aire')),
 };
@@ -345,7 +346,7 @@ function eventWhen(event) {
 }
 
 function eventRow(event) {
-  const heading = event.url ? h('a', { href: event.url, rel: 'noopener', target: '_blank' }, event.title) : event.title;
+  const heading = h('button', { type: 'button', class: 'event-open', onclick: () => openEvent(event) }, event.title);
   const box = event.ongoing ? new Date() : new Date(event.start);
   return h('article', { class: 'event' },
     h('div', { class: 'date-box', 'aria-hidden': 'true' }, h('b', {}, fmtDay.format(box)), h('small', {}, fmtMonth.format(box).replace('.', ''))),
@@ -749,6 +750,104 @@ function renderPrefsSheet() {
   sheet.scrollTop = scroll;
 }
 
+// Tiempo y mar
+async function loadWeather() {
+  const [forecast, marine] = await Promise.allSettled([fetchJson(WEATHER_URLS.forecast), fetchJson(WEATHER_URLS.marine)]);
+  if (forecast.status === 'fulfilled') state.weather = summarizeWeather(forecast.value) ?? state.weather;
+  if (marine.status === 'fulfilled') state.marine = summarizeMarine(marine.value) ?? state.marine;
+  state.weatherError = forecast.status === 'rejected';
+  renderWeather();
+}
+
+function renderWeather() {
+  const { weather: w, marine: m } = state;
+  if (!w) {
+    fill('weather', state.weatherError ? message('No se ha podido cargar el tiempo.', loadWeather) : skeleton());
+    return;
+  }
+  const stats = [
+    w.today.rain !== null && ['Lluvia hoy', `${number(w.today.rain)} %`],
+    w.current.wind !== null && ['Viento', `${number(w.current.wind)} km/h ${w.current.dir}`.trim()],
+    w.current.gusts !== null && ['Rachas', `${number(w.current.gusts)} km/h`],
+    w.today.uv !== null && ['Índice UV', number(w.today.uv)],
+    w.today.sunrise && ['Sol', `${w.today.sunrise}–${w.today.sunset}`],
+  ].filter(Boolean);
+  const sea = m && [
+    m.wave !== null && `olas de ${number(m.wave, 1)} m${m.dir ? ` del ${m.dir}` : ''}${m.period ? ` cada ${number(m.period)} s` : ''}`,
+    m.sst !== null && `agua a ${number(m.sst)} °C`,
+  ].filter(Boolean).join(' · ');
+  fill('weather',
+    h('div', { class: 'wx-now' },
+      h('b', { class: 'wx-temp' }, `${number(w.current.temp)}°`),
+      h('div', {},
+        h('p', { class: 'wx-text' }, w.current.text || 'Ahora'),
+        h('p', { class: 'wx-sub' }, [
+          w.current.feels !== null && `Sensación ${number(w.current.feels)}°`,
+          w.today.max !== null && `Máx. ${number(w.today.max)}°`,
+          w.today.min !== null && `Mín. ${number(w.today.min)}°`,
+        ].filter(Boolean).join(' · ')))),
+    stats.length > 0 && h('dl', { class: 'weather' }, stats.map(([label, value]) => h('div', {}, h('dt', {}, label), h('dd', {}, value)))),
+    w.next.length > 0 && h('div', { class: 'wx-hours', role: 'list', 'aria-label': 'Próximas horas' }, w.next.map((p) => h('div', { role: 'listitem' },
+      h('small', {}, fmtHour.format(p.time)),
+      h('b', {}, `${number(p.temp)}°`),
+      p.rain !== null && h('small', { 'aria-label': `${p.rain} % de probabilidad de lluvia` }, `${number(p.rain)} %`)))),
+    sea && h('p', { class: 'wx-sea' }, h('strong', {}, 'Mar: '), sea),
+    h('p', { class: 'note' }, 'Previsión de modelos meteorológicos. El mar, en aguas abiertas frente a Gijón; no apto para navegación. ',
+      h('a', { href: 'https://open-meteo.com/', rel: 'noopener', target: '_blank' }, 'Weather data by Open-Meteo.com'), ' (CC BY 4.0).'),
+  );
+}
+
+// Ficha de un acto: calendario y compartir
+const slugify = (text) => normalizeText(text).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'acto';
+
+function downloadIcs(event, status) {
+  const url = URL.createObjectURL(new Blob([buildIcs(event)], { type: 'text/calendar;charset=utf-8' }));
+  const link = h('a', { href: url, download: `${slugify(event.title)}.ics` });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  status.textContent = 'Archivo del acto descargado: ábrelo para añadirlo a tu calendario.';
+}
+
+async function shareEvent(event, status) {
+  const url = event.url || OFFICIAL_AGENDA;
+  const text = [event.title, eventWhen(event), event.place].filter(Boolean).join(' · ');
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: event.title, text, url });
+      return;
+    }
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+    status.textContent = 'Copiado: pégalo donde quieras compartirlo.';
+  } catch (error) {
+    if (error?.name !== 'AbortError') status.textContent = 'No se ha podido compartir.';
+  }
+}
+
+function openEvent(event) {
+  const sheet = byId('event-sheet');
+  if (!sheet) return;
+  const status = h('p', { class: 'note', role: 'status' });
+  fill('event-sheet',
+    h('div', { class: 'sheet-head' }, h('h2', {}, 'Detalles'), h('button', { type: 'button', onclick: () => sheet.close() }, 'Cerrar')),
+    h('div', { class: 'sheet-body' },
+      event.image && h('img', { class: 'event-img', src: event.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: (e) => e.target.remove() }),
+      (event.topic || event.type) && h('p', { class: 'muted' }, [event.topic, event.type].filter(Boolean).join(' · ')),
+      h('h3', { class: 'event-title' }, event.title),
+      h('p', {}, event.ongoing && h('span', { class: 'live' }, 'En curso · '), eventWhen(event)),
+      (event.place || event.address) && h('p', { class: 'muted' }, [event.place, event.address].filter(Boolean).join(' · ')),
+      h('div', { class: 'event-actions' },
+        h('button', { type: 'button', class: 'primary', onclick: () => downloadIcs(event, status) }, 'Añadir al calendario'),
+        h('a', { class: 'btn', href: googleCalendarUrl(event), rel: 'noopener', target: '_blank' }, 'Google Calendar'),
+        h('button', { type: 'button', onclick: () => shareEvent(event, status) }, 'Compartir'),
+        event.url && h('a', { class: 'btn', href: event.url, rel: 'noopener', target: '_blank' }, 'Ver en gijon.es')),
+      status),
+  );
+  sheet.scrollTop = 0;
+  sheet.showModal();
+}
+
 // Mapa
 let map = null;
 let layers = {};
@@ -1003,6 +1102,7 @@ function start() {
       state.feedsLoadedAt = Date.now();
       loadNotices();
       loadEvents();
+      loadWeather();
     }
   });
   state.prefs = loadPrefs();
@@ -1010,6 +1110,8 @@ function start() {
   byId('prefs-open')?.addEventListener('click', openPrefs);
   prefsSheet?.addEventListener('click', (event) => { if (event.target === prefsSheet) prefsSheet.close(); });
   renderPersonal();
+  const eventSheet = byId('event-sheet');
+  eventSheet?.addEventListener('click', (event) => { if (event.target === eventSheet) eventSheet.close(); });
   const sheet = byId('layers-sheet');
   byId('layers-open')?.addEventListener('click', () => sheet.showModal());
   sheet?.addEventListener('click', (event) => { if (event.target === sheet) sheet.close(); });
@@ -1017,6 +1119,7 @@ function start() {
   renderAir();
   renderEvents();
   renderNotices();
+  renderWeather();
   renderWater();
   renderBeaches();
   renderChips();
@@ -1025,6 +1128,7 @@ function start() {
   loadAir();
   loadNotices();
   loadEvents();
+  loadWeather();
   loadWater();
   loadPlaces();
   loadMobility();

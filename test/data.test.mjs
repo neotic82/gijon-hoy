@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aqiLevel, bathingForBeach, compareLines, parseKml, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
+  aqiLevel, bathingForBeach, buildIcs, compareLines, compass, googleCalendarUrl, parseKml, summarizeMarine, summarizeWeather, weatherText, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
 } from '../js/data.js';
 
 test('toNumber admite los tipos mezclados del portal', () => {
@@ -267,4 +267,49 @@ test('parseKml lee puntos y líneas con su carpeta y descarta lo que está fuera
   assert.equal(features[2].description, 'Dirección: Calle Palacio Valdés');
   assert.deepEqual(features[2].point, { lat: 43.54, lon: -5.6659 });
   assert.deepEqual(parseKml(''), []);
+});
+
+test('buildIcs: acto con hora, sin hora de fin y de día completo', () => {
+  const now = Date.UTC(2026, 10, 9, 22);
+  const timed = buildIcs({ id: '43733', title: 'Charla; tapices, y más', start: Date.UTC(2026, 10, 20, 18), end: Date.UTC(2026, 10, 20, 19, 30), place: 'Antiguo Instituto', address: 'C/Jovellanos, 21', url: 'https://www.gijon.es/es/eventos/x', allDay: false, openEnd: false }, now);
+  assert.match(timed, /^BEGIN:VCALENDAR\r\n/);
+  assert.match(timed, /UID:43733@gijon-hoy/);
+  assert.match(timed, /DTSTART:20261120T180000Z\r\nDTEND:20261120T193000Z/);
+  assert.ok(timed.includes('SUMMARY:Charla\\; tapices\\, y más'));
+  assert.match(timed, /LOCATION:Antiguo Instituto\\, C\/Jovellanos\\, 21/);
+  assert.ok(timed.split('\r\n').every((line) => new TextEncoder().encode(line).length <= 75));
+  const open = buildIcs({ title: 'Concierto', start: Date.UTC(2026, 10, 20, 19), end: Date.UTC(2026, 10, 20, 22, 59), allDay: false, openEnd: true }, now);
+  assert.doesNotMatch(open, /DTEND/);
+  assert.match(open, /UID:[0-9a-f]+@gijon-hoy/);
+  const allDay = buildIcs({ title: 'Expo', start: new Date(2026, 10, 1).getTime(), end: new Date(2026, 10, 30, 23, 59).getTime(), allDay: true }, now);
+  assert.match(allDay, /DTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261201/);
+});
+
+test('googleCalendarUrl construye la plantilla', () => {
+  const url = new URL(googleCalendarUrl({ title: 'Concierto', start: Date.UTC(2026, 10, 20, 19), end: 0, allDay: false, openEnd: true, place: 'Teatro Jovellanos' }));
+  assert.equal(url.hostname, 'calendar.google.com');
+  assert.equal(url.searchParams.get('dates'), '20261120T190000Z/20261120T200000Z');
+  assert.equal(url.searchParams.get('location'), 'Teatro Jovellanos');
+});
+
+test('tiempo: códigos, rumbo y resumen', () => {
+  assert.equal(weatherText(3), 'Cubierto');
+  assert.equal(weatherText(1234), '');
+  assert.equal(compass(173), 'S');
+  assert.equal(compass(25), 'NE');
+  assert.equal(compass(350), 'N');
+  assert.equal(compass(null), '');
+  const hours = Array.from({ length: 12 }, (_, i) => `2026-11-09T${String(12 + i).padStart(2, '0')}:00`);
+  const weather = summarizeWeather({
+    current: { temperature_2m: 20.1, apparent_temperature: 18.6, relative_humidity_2m: 58, weather_code: 3, wind_speed_10m: 11.6, wind_direction_10m: 173, wind_gusts_10m: 23 },
+    hourly: { time: hours, temperature_2m: hours.map((_, i) => 15 + i), precipitation_probability: hours.map(() => 10), weather_code: hours.map(() => 3) },
+    daily: { temperature_2m_max: [22.7], temperature_2m_min: [17.2], precipitation_probability_max: [25], uv_index_max: [2.45], sunrise: ['2026-11-09T08:08'], sunset: ['2026-11-09T18:03'] },
+  }, new Date(2026, 10, 9, 13, 30).getTime());
+  assert.equal(weather.current.text, 'Cubierto');
+  assert.equal(weather.current.dir, 'S');
+  assert.equal(weather.today.sunset, '18:03');
+  assert.deepEqual(weather.next.map((p) => p.temp), [17, 20, 23, 26]);
+  assert.equal(summarizeWeather({}), null);
+  assert.deepEqual(summarizeMarine({ current: { wave_height: 0.5, wave_direction: 25, wave_period: 6.45, sea_surface_temperature: 16.1 } }), { wave: 0.5, period: 6.45, dir: 'NE', sst: 16.1 });
+  assert.equal(summarizeMarine({ current: {} }), null);
 });

@@ -53,6 +53,10 @@
         </div>
         <div class="col">
           <section class="block">
+            <div class="block-head"><h2>Tiempo y mar</h2></div>
+            <div id="weather"></div>
+          </section>
+          <section class="block">
             <div class="block-head"><h2>Próximamente</h2><a href="#agenda">Ver agenda</a></div>
             <div id="next-events"></div>
           </section>
@@ -75,6 +79,7 @@
           Datos: <a href="https://www.gijon.es/es/datos" rel="noopener">Ayuntamiento de Gijón</a>,
           <a href="https://creativecommons.org/licenses/by/4.0/deed.es" rel="noopener">CC BY 4.0</a>, limpiados y combinados para esta app.
           Agenda y avisos: web municipal de <a href="https://www.gijon.es" rel="noopener">gijon.es</a>.
+          Tiempo y mar: <a href="https://open-meteo.com/" rel="noopener">Open-Meteo.com</a> (CC BY 4.0), con modelos de ECMWF, DWD, NOAA y Météo-France y datos de Copernicus Marine.
           Los datos de aire son provisionales.
           Índice: <a href="https://airindex.eea.europa.eu/AQI/index.html" rel="noopener">Agencia Europea de Medio Ambiente</a>, cálculo orientativo.</p>
       </footer>
@@ -103,6 +108,7 @@
   </main>
 
   <dialog id="prefs-sheet" class="sheet" aria-label="Personalizar"></dialog>
+  <dialog id="event-sheet" class="sheet" aria-label="Detalles del acto"></dialog>
 
   <script src="vendor/leaflet/leaflet.js"></script>
   <script type="module" src="js/app.js"></script>

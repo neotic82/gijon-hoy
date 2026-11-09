@@ -351,6 +351,7 @@ function toEvent(raw, now) {
 export function normalizeEvents(agendaRows, institutionalRows, now = Date.now()) {
   const agenda = mergeRowsById(Array.isArray(agendaRows) ? agendaRows : []).map(({ row: r, places }) => toEvent({
     source: 'agenda',
+    id: String(r.id ?? ''),
     title: plainText(r.titulo),
     place: places.length > 1 ? `${places[0]} y ${places.length - 1} más` : (places[0] ?? ''),
     address: plainText(r.direccion_directorio || r.field_lo_address),
@@ -363,6 +364,7 @@ export function normalizeEvents(agendaRows, institutionalRows, now = Date.now())
   }, now));
   const institutional = (Array.isArray(institutionalRows) ? institutionalRows : []).map((r) => toEvent({
     source: 'institucional',
+    id: '',
     title: plainText(r.titulo),
     place: plainText(r.localizacion_en_directorio),
     address: '',
@@ -577,4 +579,146 @@ export function parseKml(text) {
     }
   }
   return features;
+}
+
+// Calendario: archivo .ics (RFC 5545) y enlace a Google Calendar.
+const pad = (n) => String(n).padStart(2, '0');
+const utcStamp = (ms) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+const localDay = (ms) => { const d = new Date(ms); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`; };
+const dayAfter = (ms) => { const d = new Date(ms); d.setDate(d.getDate() + 1); return d.getTime(); };
+const icsText = (text) => String(text).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
+
+function hashText(text) {
+  let hash = 5381;
+  for (const ch of text) hash = ((hash * 33) ^ ch.codePointAt(0)) >>> 0;
+  return hash.toString(16);
+}
+
+// Las líneas de un .ics no deben superar 75 octetos; se pliegan con un espacio al inicio.
+function foldLine(line) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  let current = '';
+  let bytes = 0;
+  for (const ch of line) {
+    const size = encoder.encode(ch).length;
+    if (bytes + size > 73) {
+      parts.push(current);
+      current = ' ';
+      bytes = 1;
+    }
+    current += ch;
+    bytes += size;
+  }
+  parts.push(current);
+  return parts.join('\r\n');
+}
+
+const eventLocation = (event) => [event.place, event.address].filter(Boolean).join(', ');
+
+export function buildIcs(event, now = Date.now()) {
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gijon hoy//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+    `UID:${event.id || hashText(`${event.title}|${event.start}`)}@gijon-hoy`,
+    `DTSTAMP:${utcStamp(now)}`,
+  ];
+  if (event.allDay) {
+    lines.push(`DTSTART;VALUE=DATE:${localDay(event.start)}`, `DTEND;VALUE=DATE:${localDay(dayAfter(event.end))}`);
+  } else {
+    lines.push(`DTSTART:${utcStamp(event.start)}`);
+    if (!event.openEnd) lines.push(`DTEND:${utcStamp(event.end)}`);
+  }
+  lines.push(`SUMMARY:${icsText(event.title)}`);
+  if (eventLocation(event)) lines.push(`LOCATION:${icsText(eventLocation(event))}`);
+  if (event.url) lines.push(`URL:${event.url}`, `DESCRIPTION:${icsText(`Más información: ${event.url}`)}`);
+  lines.push('END:VEVENT', 'END:VCALENDAR');
+  return `${lines.map(foldLine).join('\r\n')}\r\n`;
+}
+
+export function googleCalendarUrl(event) {
+  const dates = event.allDay
+    ? `${localDay(event.start)}/${localDay(dayAfter(event.end))}`
+    : `${utcStamp(event.start)}/${utcStamp(event.openEnd ? event.start + 3600e3 : event.end)}`;
+  const params = new URLSearchParams({ action: 'TEMPLATE', text: event.title, dates });
+  if (event.url) params.set('details', `Más información: ${event.url}`);
+  if (eventLocation(event)) params.set('location', eventLocation(event));
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
+
+// Tiempo y mar: Open-Meteo (CC BY 4.0). El punto marino más cercano con datos está en mar abierto.
+export const WEATHER_URLS = {
+  forecast: 'https://api.open-meteo.com/v1/forecast?latitude=43.5357&longitude=-5.6615&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset&timezone=Europe%2FMadrid&forecast_days=2',
+  marine: 'https://marine-api.open-meteo.com/v1/marine?latitude=43.552&longitude=-5.652&current=wave_height,wave_direction,wave_period,sea_surface_temperature&timezone=Europe%2FMadrid',
+};
+
+const WEATHER_CODES = {
+  0: 'Despejado', 1: 'Poco nuboso', 2: 'Nubes y claros', 3: 'Cubierto', 45: 'Niebla', 48: 'Niebla',
+  51: 'Llovizna débil', 53: 'Llovizna', 55: 'Llovizna intensa', 56: 'Llovizna helada', 57: 'Llovizna helada',
+  61: 'Lluvia débil', 63: 'Lluvia', 65: 'Lluvia fuerte', 66: 'Lluvia helada', 67: 'Lluvia helada',
+  71: 'Nieve débil', 73: 'Nieve', 75: 'Nieve fuerte', 77: 'Granizo menudo',
+  80: 'Chubascos débiles', 81: 'Chubascos', 82: 'Chubascos fuertes', 85: 'Chubascos de nieve', 86: 'Chubascos de nieve',
+  95: 'Tormenta', 96: 'Tormenta con granizo', 99: 'Tormenta con granizo',
+};
+export const weatherText = (code) => WEATHER_CODES[code] ?? '';
+
+export function compass(degrees) {
+  if (degrees === null || !Number.isFinite(degrees)) return '';
+  return ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round((((degrees % 360) + 360) % 360) / 45) % 8];
+}
+
+// Open-Meteo devuelve horas locales («2026-11-09T23:00») en la zona pedida.
+function openMeteoTime(text) {
+  const [date, time = '00:00'] = String(text ?? '').split('T');
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  return y && m && d ? new Date(y, m - 1, d, hh || 0, mm || 0).getTime() : null;
+}
+
+export function summarizeWeather(data, now = Date.now()) {
+  const current = data?.current;
+  const daily = data?.daily;
+  const hourly = data?.hourly;
+  if (!current || !daily || !Array.isArray(hourly?.time)) return null;
+  const temp = toNumber(current.temperature_2m);
+  if (temp === null) return null;
+  const upcoming = hourly.time
+    .map((time, i) => ({
+      time: openMeteoTime(time),
+      temp: toNumber(hourly.temperature_2m?.[i]),
+      rain: toNumber(hourly.precipitation_probability?.[i]),
+      code: hourly.weather_code?.[i],
+    }))
+    .filter((p) => p.time > now && p.temp !== null);
+  return {
+    current: {
+      temp,
+      feels: toNumber(current.apparent_temperature),
+      humidity: toNumber(current.relative_humidity_2m),
+      text: weatherText(current.weather_code),
+      wind: toNumber(current.wind_speed_10m),
+      gusts: toNumber(current.wind_gusts_10m),
+      dir: compass(toNumber(current.wind_direction_10m)),
+    },
+    today: {
+      max: toNumber(daily.temperature_2m_max?.[0]),
+      min: toNumber(daily.temperature_2m_min?.[0]),
+      rain: toNumber(daily.precipitation_probability_max?.[0]),
+      uv: toNumber(daily.uv_index_max?.[0]),
+      sunrise: String(daily.sunrise?.[0] ?? '').slice(11, 16),
+      sunset: String(daily.sunset?.[0] ?? '').slice(11, 16),
+    },
+    next: upcoming.filter((_, i) => i % 3 === 0).slice(0, 5),
+  };
+}
+
+export function summarizeMarine(data) {
+  const current = data?.current;
+  if (!current) return null;
+  const sea = {
+    wave: toNumber(current.wave_height),
+    period: toNumber(current.wave_period),
+    dir: compass(toNumber(current.wave_direction)),
+    sst: toNumber(current.sea_surface_temperature),
+  };
+  return sea.wave === null && sea.sst === null ? null : sea;
 }
