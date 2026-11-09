@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gijón hoy</title>
+  <meta name="description" content="Calidad del aire, agenda, playas y lugares de Gijón a partir de sus datos abiertos.">
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)">
+  <link rel="preload" href="vendor/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gijón hoy">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="icons/icon-192.png" alt="" width="32" height="32">
+      <div>
+        <h1>Gijón hoy</h1>
+        <p id="today"></p>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Secciones">
+      <a href="#hoy" data-tab="hoy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>Hoy</a>
+      <a href="#mapa" data-tab="mapa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>Mapa</a>
+      <a href="#agenda" data-tab="agenda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Agenda</a>
+      <a href="#agua" data-tab="agua"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>Agua</a>
+    </nav>
+  </header>
+
+  <p id="offline" class="offline" hidden>Sin conexión: se muestran los últimos datos guardados.</p>
+
+  <main>
+    <section id="view-hoy" class="view" aria-label="Hoy">
+      <section class="block notices-block">
+        <div class="block-head"><h2>Avisos de movilidad</h2><a href="https://www.gijon.es/es/avisos" rel="noopener" target="_blank">Ver en gijon.es</a></div>
+        <div id="notices"></div>
+      </section>
+      <div class="hoy-grid">
+        <div class="col">
+          <div id="air-hero"></div>
+          <div id="air-detail"></div>
+        </div>
+        <div class="col">
+          <section class="block">
+            <div class="block-head"><h2>Próximamente</h2><a href="#agenda">Ver agenda</a></div>
+            <div id="next-events"></div>
+          </section>
+          <section class="block">
+            <div class="block-head"><h2>Calidad del agua</h2><a href="#agua">Ver detalle</a></div>
+            <div id="water-summary"></div>
+          </section>
+          <section class="block">
+            <div class="block-head"><h2>Aire por estaciones</h2></div>
+            <div id="air-stations"></div>
+          </section>
+        </div>
+      </div>
+      <section class="block">
+        <div class="block-head"><h2>Playas</h2><a href="#mapa">Ver en el mapa</a></div>
+        <div id="beaches" class="scroller"></div>
+      </section>
+      <footer class="credits">
+        <p>Proyecto independiente, sin relación oficial con el Ayuntamiento.
+          Datos: <a href="https://www.gijon.es/es/datos" rel="noopener">Ayuntamiento de Gijón</a>,
+          <a href="https://creativecommons.org/licenses/by/4.0/deed.es" rel="noopener">CC BY 4.0</a>, limpiados y combinados para esta app.
+          Agenda y avisos: web municipal de <a href="https://www.gijon.es" rel="noopener">gijon.es</a>.
+          Los datos de aire son provisionales.
+          Índice: <a href="https://airindex.eea.europa.eu/AQI/index.html" rel="noopener">Agencia Europea de Medio Ambiente</a>, cálculo orientativo.</p>
+      </footer>
+    </section>
+
+    <section id="view-mapa" class="view" aria-label="Mapa" hidden>
+      <div id="chips" class="chips" role="group" aria-label="Capas del mapa"></div>
+      <div id="map"></div>
+    </section>
+
+    <section id="view-agenda" class="view narrow" aria-label="Agenda" hidden>
+      <div class="block-head"><h2>Agenda</h2></div>
+      <div id="agenda-notice"></div>
+      <div id="agenda-filters" class="filters"></div>
+      <div id="agenda-list"></div>
+    </section>
+
+    <section id="view-agua" class="view narrow" aria-label="Calidad del agua" hidden>
+      <div id="water-view" class="col"></div>
+    </section>
+  </main>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
