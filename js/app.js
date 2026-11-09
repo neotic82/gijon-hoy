@@ -1,6 +1,6 @@
 import {
   AIR_ID, AQI_LEVELS, CATEGORIES, EVENT_IDS, NOTICES_ID, POLLUTANT_LABELS, WATER_IDS, WEB_URLS,
-  DISTRICTS, bathingForBeach, compareLines, dataUrl, distanceKm, districtCentroids, districtLabel, inDistrict, linesAffected, nearestDistrict, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces,
+  DISTRICTS, MOBILITY, MOBILITY_COLOR, bathingForBeach, kmlUrl, parseKml, compareLines, dataUrl, distanceKm, districtCentroids, districtLabel, inDistrict, linesAffected, nearestDistrict, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces,
   occursBetween, plainText, summarizeAir, summarizeBathing, summarizeTapWater,
 } from './data.js';
 
@@ -17,7 +17,7 @@ const state = {
   agendaFilter: { q: '', when: 'today', topic: '', zone: false }, agendaLimit: 40,
   notices: null, noticesError: false, noticesFromWeb: false, noticesExpanded: false,
   tap: null, bathing: null, waterError: false, waterParam: 'clorolibre',
-  places: {}, placesFailed: new Set(),
+  places: {}, placesFailed: new Set(), mobility: {},
   stationId: store('station'),
   prefs: null,
   me: null,
@@ -81,6 +81,18 @@ async function fetchJson(url, options = {}) {
 }
 
 const getJson = (id) => fetchJson(dataUrl(id));
+
+async function fetchText(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 // La web devuelve un permiso CORS por origen y la caché HTTP puede servir el de otra visita a gijon.es.
 const getWebJson = (url) => fetchJson(url, { cache: 'no-store' });
 
@@ -152,6 +164,19 @@ async function loadPlaces() {
     }
   }));
   renderBeaches();
+  refreshMap();
+}
+
+async function loadMobility() {
+  await Promise.all(MOBILITY.map(async (layer) => {
+    try {
+      const features = parseKml(await fetchText(kmlUrl(layer.id)));
+      state.mobility[layer.key] = features.filter((f) => !layer.folders || layer.folders.test(f.folder));
+    } catch (error) {
+      console.warn(layer.key, error);
+      state.mobility[layer.key] = [];
+    }
+  }));
   refreshMap();
 }
 
@@ -766,6 +791,18 @@ function placePopup(place, label) {
   );
 }
 
+function mobilityPopup(layer, feature) {
+  const generic = !feature.name || /^(taxis|carril bici|en superficie)$/i.test(feature.name);
+  const where = feature.point ?? feature.line[Math.floor(feature.line.length / 2)];
+  return h('div', { class: 'pop' },
+    h('small', {}, layer.label),
+    h('h3', {}, generic ? (feature.folder || layer.label) : feature.name),
+    feature.description && h('p', {}, feature.description),
+    feature.point && directions(where),
+    h('p', { class: 'pop-note' }, 'Datos del Plan de Movilidad (PMUS); pueden no estar al día.'),
+  );
+}
+
 function airPopup(station) {
   return h('div', { class: 'pop' },
     h('small', {}, 'Estación de calidad del aire'),
@@ -805,6 +842,22 @@ function refreshMap() {
       .bindPopup(() => airPopup(station)).addTo(airGroup);
   }
   layers.aire = airGroup;
+  for (const layer of MOBILITY) {
+    const group = L.layerGroup();
+    for (const feature of state.mobility[layer.key] ?? []) {
+      const popup = () => mobilityPopup(layer, feature);
+      if (feature.line) {
+        L.polyline(feature.line.map((p) => [p.lat, p.lon]), {
+          color: layer.color, weight: 4, opacity: .85, dashArray: /compartida/i.test(feature.folder) ? '2 7' : layer.dash,
+        }).bindPopup(popup).addTo(group);
+      } else {
+        const title = feature.name && !/^(taxis)$/i.test(feature.name) ? feature.name : layer.label;
+        L.marker([feature.point.lat, feature.point.lon], { icon: pin(MOBILITY_COLOR, '', layer.glyph), title, alt: title })
+          .bindPopup(popup).addTo(group);
+      }
+    }
+    layers[layer.key] = group;
+  }
   for (const [key] of Object.entries(layers)) setLayer(key, state.layersOn.has(key));
 
   if (state.me) {
@@ -819,14 +872,20 @@ const LAYER_GROUPS = [
   ['Alojamiento', ['hoteles', 'hostales', 'apartamentos', 'campings', 'albergues']],
   ['Servicios', ['cajeros', 'bibliotecas']],
   ['Medio ambiente', ['aire']],
+  ['Movilidad', MOBILITY.map((layer) => layer.key), 'Del Plan de Movilidad Urbana (PMUS): algunos datos pueden no estar al día.'],
 ];
 
 function layerItems() {
-  return [{ key: 'aire', label: 'Estaciones de aire', color: 'var(--ink)' }, ...CATEGORIES]
-    .filter((item) => item.key === 'aire' || state.places[item.key] === undefined || state.places[item.key].length > 0);
+  const mobility = MOBILITY.map((layer) => ({ ...layer, color: layer.color ?? MOBILITY_COLOR }));
+  return [{ key: 'aire', label: 'Estaciones de aire', color: 'var(--ink)' }, ...CATEGORIES, ...mobility]
+    .filter((item) => item.key === 'aire' || layerCount(item.key) === undefined || layerCount(item.key) > 0);
 }
 
-const layerCount = (key) => (key === 'aire' ? state.air?.length : state.places[key]?.length);
+function layerCount(key) {
+  if (key === 'aire') return state.air?.length;
+  if (key in state.mobility) return state.mobility[key].length;
+  return state.places[key]?.length;
+}
 
 function toggleLayer(key, on) {
   if (on) state.layersOn.add(key);
@@ -844,7 +903,7 @@ function renderChips() {
         toggleLayer(item.key, !state.layersOn.has(item.key));
         renderChips();
       },
-    }, h('i', { class: item.glyph ? 'glyph' : '' }, item.glyph ?? ''), item.label, count ? ` (${count})` : '');
+    }, h('i', { class: item.kind === 'line' ? 'line' : item.glyph ? 'glyph' : '' }, item.glyph ?? ''), item.label, count ? ` (${count})` : '');
   }));
   const active = items.filter((item) => state.layersOn.has(item.key)).length;
   const badge = byId('layers-count');
@@ -860,7 +919,7 @@ function renderLayerSheet(items) {
   if (!sheet) return;
   const scroll = sheet.scrollTop;
   const row = (item) => h('label', { class: 'layer-row' },
-    h('i', { style: `--c:${item.color}` }, item.glyph ?? ''),
+    h('i', { class: item.kind === 'line' ? 'line' : '', style: `--c:${item.color}` }, item.glyph ?? ''),
     h('span', {}, item.label),
     layerCount(item.key) ? h('small', {}, String(layerCount(item.key))) : null,
     h('input', {
@@ -874,7 +933,7 @@ function renderLayerSheet(items) {
   );
   fill('layers-sheet',
     h('div', { class: 'sheet-head' }, h('h2', {}, 'Capas del mapa'), h('button', { type: 'button', onclick: () => sheet.close() }, 'Cerrar')),
-    h('div', { class: 'sheet-body' }, LAYER_GROUPS.map(([title, keys]) => {
+    h('div', { class: 'sheet-body' }, LAYER_GROUPS.map(([title, keys, note]) => {
       const group = keys.map((key) => items.find((item) => item.key === key)).filter(Boolean);
       if (!group.length) return null;
       const allOn = group.every((item) => state.layersOn.has(item.key));
@@ -885,7 +944,8 @@ function renderLayerSheet(items) {
             type: 'button',
             onclick: () => { group.forEach((item) => toggleLayer(item.key, !allOn)); renderChips(); },
           }, allOn ? 'Ninguna' : 'Todas')),
-        group.map(row));
+        group.map(row),
+        note && h('p', { class: 'note' }, note));
     }).filter(Boolean)),
   );
   sheet.scrollTop = scroll;
@@ -967,6 +1027,7 @@ function start() {
   loadEvents();
   loadWater();
   loadPlaces();
+  loadMobility();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch((error) => console.warn('Service worker', error));
   }

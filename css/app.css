@@ -478,6 +478,10 @@ button, select, input { font: inherit; color: inherit; }
 .line-list strong { color: var(--ink); }
 .sheet .note { margin-top: 8px; }
 
+.layer-row > i.line, .chip i.line { width: 22px; height: 6px; border-radius: 3px; }
+.layer-row > i[style*="#475569"], .chip i[style*="#475569"] { font-size: .56rem; }
+.pop .pop-note { color: #64748b; font-size: .74rem; }
+
 /* Mapa oscuro: se oscurecen solo las teselas, sin tocar los puntos ni cambiar de proveedor. */
 @media (prefers-color-scheme: dark) {
   .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7); }
@@ -515,6 +519,4 @@ button, select, input { font: inherit; color: inherit; }
   .filters { grid-template-columns: 1fr 1fr; }
   .segments { grid-column: 1 / -1; }
   #view-mapa:not([hidden]) { height: calc(100dvh - var(--top-h) - 1px); }
-  .layers-open { display: none; }
-  .chips { display: flex; flex-wrap: wrap; }
 }

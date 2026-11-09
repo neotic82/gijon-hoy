@@ -1,4 +1,4 @@
-const VERSION = 'v12';
+const VERSION = 'v14';
 const SHELL = `gijon-hoy-shell-${VERSION}`;
 const DATA = `gijon-hoy-data-${VERSION}`;
 const TILES = `gijon-hoy-tiles-${VERSION}`;
@@ -49,27 +49,23 @@ async function networkFirst(request) {
   }
 }
 
-// App: respuesta inmediata desde caché y actualización en segundo plano.
-async function staleWhileRevalidate(request, event) {
+// App: primero la red (revalidando con el servidor) para no mezclar versiones; sin conexión, la copia guardada.
+async function shell(request, event) {
   const cache = await caches.open(SHELL);
-  // Todas las navegaciones comparten la misma entrada; no-cache obliga a revalidar con el servidor.
   const key = request.mode === 'navigate' ? 'index.html' : request;
-  const saved = await cache.match(key);
-  const update = fetch(request.url, { cache: 'no-cache' }).then((response) => {
-    if (response.ok) cache.put(key, response.clone());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(request.url, { cache: 'no-cache', signal: controller.signal });
+    if (response.ok) event.waitUntil(cache.put(key, response.clone()));
     return response;
-  });
-  if (saved) {
-    event.waitUntil(update.catch(() => {}));
-    return saved;
-  }
-  return update.catch(async (error) => {
-    if (request.mode === 'navigate') {
-      const shell = await cache.match('index.html');
-      if (shell) return shell;
-    }
+  } catch (error) {
+    const saved = await cache.match(key);
+    if (saved) return saved;
     throw error;
-  });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Mapa: las teselas ya vistas siguen disponibles sin conexión, con un máximo guardado.
@@ -94,5 +90,5 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.hostname === 'opendata.gijon.es' || url.hostname === 'drupal.gijon.es') event.respondWith(networkFirst(request));
   else if (url.hostname === 'tile.openstreetmap.org') event.respondWith(tile(request, event));
-  else if (url.origin === self.location.origin) event.respondWith(staleWhileRevalidate(request, event));
+  else if (url.origin === self.location.origin) event.respondWith(shell(request, event));
 });

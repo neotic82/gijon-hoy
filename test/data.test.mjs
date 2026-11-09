@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aqiLevel, bathingForBeach, compareLines, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
+  aqiLevel, bathingForBeach, compareLines, parseKml, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
 } from '../js/data.js';
 
 test('toNumber admite los tipos mezclados del portal', () => {
@@ -241,4 +241,30 @@ test('normalizePlaces y normalizeNotices conservan distrito y líneas', () => {
   const [notice] = normalizeNotices([{ titulo: 'Obras', fecha_fin_html: '2099-01-01T00:00:00+0100', field_lineas_de_autobus: 'L10, L14', distrito: 'Este' }], 0);
   assert.equal(notice.district, 'Este');
   assert.deepEqual(linesAffected(notice, ['L14', 'L1']), ['L14']);
+});
+
+test('parseKml lee puntos y líneas con su carpeta y descarta lo que está fuera', () => {
+  const kml = `<?xml version="1.0"?><kml><Document><name>Capa - PMUS Gijón.kml</name>
+    <Folder><name>Carriles bici</name>
+      <Folder><name>Carriles bici existentes</name>
+        <Placemark><name>Carril bici</name><LineString><coordinates> -5.68,43.52,0 -5.67,43.53,0 </coordinates></LineString></Placemark>
+      </Folder>
+      <Folder><name>Tramos circulación compartida peatones-ciclistas)</name>
+        <Placemark><name>Tramo</name><LineString><coordinates>-5.66,43.54,0 -5.65,43.54,0</coordinates></LineString></Placemark>
+      </Folder>
+    </Folder>
+    <Placemark><name>Gijón Bici Acerona</name><description><![CDATA[<b>Dirección:</b> Calle Palacio Valdés</br> <a href="x">Más información</a>]]></description>
+      <LookAt><longitude>-5.6</longitude><latitude>43.5</latitude></LookAt><Point><coordinates>-5.6659,43.5400,0</coordinates></Point></Placemark>
+    <Placemark><name>Lejos</name><Point><coordinates>2.17,41.38,0</coordinates></Point></Placemark>
+  </Document></kml>`;
+  const features = parseKml(kml);
+  assert.equal(features.length, 3);
+  assert.equal(features[0].folder, 'Carriles bici existentes');
+  assert.equal(features[0].line.length, 2);
+  assert.deepEqual(features[0].line[0], { lat: 43.52, lon: -5.68 });
+  assert.equal(features[1].folder, 'Tramos circulación compartida peatones-ciclistas');
+  assert.equal(features[2].name, 'Gijón Bici Acerona');
+  assert.equal(features[2].description, 'Dirección: Calle Palacio Valdés');
+  assert.deepEqual(features[2].point, { lat: 43.54, lon: -5.6659 });
+  assert.deepEqual(parseKml(''), []);
 });

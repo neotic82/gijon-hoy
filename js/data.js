@@ -527,3 +527,54 @@ export function nearestDistrict(point, centroids) {
 }
 
 export const linesAffected = (notice, myLines) => notice.lines.filter((line) => myLines.includes(line));
+
+// Capas de movilidad en KML del Plan de Movilidad Urbana Sostenible (PMUS).
+export const kmlUrl = (id) => `https://opendata.gijon.es/descargar.php?id=${id}&tipo=KML`;
+export const MOBILITY_COLOR = '#475569';
+export const MOBILITY = [
+  { key: 'carrilesbici', id: 831, label: 'Carriles bici', kind: 'line', color: '#16a34a', folders: /existentes|compartida/i },
+  { key: 'zonas30', id: 842, label: 'Zonas 30', kind: 'line', color: '#b45309', dash: '7 6' },
+  { key: 'gijonbici', id: 827, label: 'Gijón Bici', glyph: 'B' },
+  { key: 'aparcabicis', id: 828, label: 'Aparcabicis', glyph: 'b' },
+  { key: 'taxis', id: 838, label: 'Paradas de taxi', glyph: 'T' },
+  { key: 'estaciones', id: 833, label: 'Estaciones de bus y tren', glyph: 'E' },
+  { key: 'parkings', id: 453, label: 'Aparcamientos subterráneos', glyph: 'P' },
+  { key: 'pmr', id: 449, label: 'Plazas de movilidad reducida', glyph: 'PMR' },
+  { key: 'recarga', id: 795, label: 'Recarga eléctrica', glyph: 'R' },
+];
+
+const inGijon = ({ lat, lon }) => lat > 43.35 && lat < 43.65 && lon > -5.9 && lon < -5.45;
+
+function kmlCoordinates(block) {
+  const text = block.match(/<coordinates>([\s\S]*?)<\/coordinates>/)?.[1] ?? '';
+  return text.trim().split(/\s+/).map((pair) => {
+    const [lon, lat] = pair.split(',').map(Number);
+    return { lat, lon };
+  }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+}
+
+// Lector mínimo de KML: puntos y líneas con su nombre, descripción y carpeta.
+export function parseKml(text) {
+  const features = [];
+  const folders = [];
+  const tokens = /<Folder\b[^>]*>|<\/Folder>|<Placemark\b[\s\S]*?<\/Placemark>|<name>([\s\S]*?)<\/name>/g;
+  for (const match of String(text ?? '').matchAll(tokens)) {
+    const token = match[0];
+    if (token.startsWith('<Folder')) folders.push({ name: '' });
+    else if (token === '</Folder>') folders.pop();
+    else if (token.startsWith('<name>')) {
+      const folder = folders.at(-1);
+      if (folder && !folder.name) folder.name = plainText(match[1]);
+    } else {
+      const name = plainText(token.match(/<name>([\s\S]*?)<\/name>/)?.[1]);
+      const description = plainText((token.match(/<description>([\s\S]*?)<\/description>/)?.[1] ?? '').replace(/<!\[CDATA\[|\]\]>/g, ''))
+        .replace(/\s*(Más información|Información sobre el punto de recarga|Acceso a la recarga)\s*/g, ' ').trim();
+      const folder = (folders.at(-1)?.name ?? '').replace(/\s*-\s*PMUS Gijón(\.kml)?$/i, '').replace(/\)$/, '').trim();
+      const point = /<Point>/.test(token) ? kmlCoordinates(token.match(/<Point>[\s\S]*?<\/Point>/)[0])[0] : null;
+      const line = /<LineString>/.test(token) ? kmlCoordinates(token.match(/<LineString>[\s\S]*?<\/LineString>/)[0]) : null;
+      if (point && inGijon(point)) features.push({ name, description, folder, point, line: null });
+      else if (line && line.length > 1 && line.some(inGijon)) features.push({ name, description, folder, point: null, line });
+    }
+  }
+  return features;
+}
