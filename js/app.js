@@ -406,15 +406,17 @@ function renderAgendaList() {
     fill('agenda-list', h('div', { class: 'message' }, 'No hay actos con esos filtros.'));
     return;
   }
-  const short = matches.filter((e) => !isLongRunning(e));
-  const long = matches.filter(isLongRunning);
-  const shown = short.slice(0, state.agendaLimit);
+  // Lo largo que ya está en curso va aparte para no ocupar el principio de la lista cronológica.
+  const running = matches.filter((e) => e.ongoing && isLongRunning(e));
+  const timeline = matches.filter((e) => !(e.ongoing && isLongRunning(e)));
+  const shown = timeline.slice(0, state.agendaLimit);
   fill('agenda-list',
     h('p', { class: 'count', role: 'status' }, `${matches.length} ${matches.length === 1 ? 'acto' : 'actos'}`),
+    running.length > 0 && h('details', { class: 'running' },
+      h('summary', {}, `Exposiciones y actividades en curso (${running.length})`),
+      running.map(eventRow)),
     shown.map(eventRow),
-    short.length > shown.length && h('button', { class: 'more', onclick: () => { state.agendaLimit += 40; renderAgendaList(); } }, `Ver más (${short.length - shown.length})`),
-    long.length > 0 && h('h3', { class: 'group' }, 'Exposiciones y actividades de larga duración'),
-    long.map(eventRow),
+    timeline.length > shown.length && h('button', { class: 'more', onclick: () => { state.agendaLimit += 40; renderAgendaList(); } }, `Ver más (${timeline.length - shown.length})`),
   );
 }
 

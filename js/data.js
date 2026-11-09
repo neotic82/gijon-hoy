@@ -377,8 +377,8 @@ export function normalizeEvents(agendaRows, institutionalRows, now = Date.now())
       seen.add(key);
       return true;
     })
-    .sort((a, b) => Number(b.ongoing) - Number(a.ongoing)
-      || (a.ongoing ? a.end - b.end : a.start - b.start));
+    // Orden cronológico: lo que ya ha empezado cuenta como «ahora».
+    .sort((a, b) => Math.max(a.start, now) - Math.max(b.start, now) || a.end - b.end);
 }
 
 function parseOffsetDate(value) {

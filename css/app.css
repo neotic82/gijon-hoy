@@ -301,7 +301,10 @@ button, select, input { font: inherit; color: inherit; }
 }
 .segments button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 3px rgb(15 23 42 / .16); }
 .count { color: var(--muted); font-size: .84rem; margin-bottom: 4px; }
-.group { font-size: 1rem; margin: 20px 0 6px; }
+.running { margin: 6px 0 10px; background: var(--surface-2); border-radius: var(--radius-s); padding: 0 12px; }
+.running summary { display: list-item; padding: 11px 0; font-size: .9rem; font-weight: 700; cursor: pointer; }
+.running .event:first-of-type { border-top: 1px solid var(--line); padding-top: 12px; }
+.running .date-box { background: var(--surface); }
 
 .scroller { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 240px); gap: 12px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .beach {

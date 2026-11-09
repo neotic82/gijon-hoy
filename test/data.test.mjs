@@ -195,3 +195,15 @@ test('summarizeBathing usa la última muestra con dato por zona', () => {
   assert.equal(bathingForBeach(summary, 'Zona sin datos'), null);
   assert.equal(summarizeBathing({}), null);
 });
+
+test('normalizeEvents ordena cronológicamente y coloca cada acto largo futuro en su fecha', () => {
+  const now = new Date(2026, 10, 9, 22).getTime();
+  const events = normalizeEvents([
+    { id: '1', titulo: 'Expo futura', fechas: '2026-11-19\n | 2027-01-10' },
+    { id: '2', titulo: 'Diciembre', fechas: '2026-12-02', hora_inicio: '19:00' },
+    { id: '3', titulo: 'Mañana', fechas: '2026-11-10', hora_inicio: '12:00', hora_fin: '14:00' },
+    { id: '4', titulo: 'Expo en curso', fechas: '2026-10-08\n | 2027-01-10' },
+    { id: '5', titulo: 'Noviembre', fechas: '2026-11-15', hora_inicio: '18:00' },
+  ], [], now);
+  assert.deepEqual(events.map((e) => e.title), ['Expo en curso', 'Mañana', 'Noviembre', 'Expo futura', 'Diciembre']);
+});
