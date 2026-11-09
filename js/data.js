@@ -79,6 +79,9 @@ const BATH_ZONES = [
   { key: 'estaño', label: 'Estaño', beach: /estaño/i },
 ];
 
+export const DISTRICTS = ['Centro', 'Este', 'Oeste', 'Sur', 'Llano', 'Rural'];
+export const districtLabel = (district) => (district === 'Llano' ? 'El Llano' : district);
+
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 // Bandas del Índice Europeo de Calidad del Aire (AEMA, µg/m³): límite superior de cada nivel.
@@ -170,6 +173,8 @@ export function normalizePlaces(rows, category) {
       description: plainText(row.descripcion),
       image: safeUrl(row.imagen),
       buses: [...new Set(buses)],
+      district: plainText(row.distrito),
+      lineNames: [...parseLineNames(row.lineas_bus)],
     }];
   });
 }
@@ -351,6 +356,7 @@ export function normalizeEvents(agendaRows, institutionalRows, now = Date.now())
     address: plainText(r.direccion_directorio || r.field_lo_address),
     type: plainText(r.tipo),
     topic: plainText(r.materia),
+    district: plainText(r.distrito),
     image: resolveUrl(r.imagen, SITE),
     url: resolveUrl(r.alias, `${SITE}/es/eventos`),
     sessions: parseSessions(r.fechas || r.fecha_inicio, r.hora_inicio, r.hora_fin),
@@ -362,6 +368,7 @@ export function normalizeEvents(agendaRows, institutionalRows, now = Date.now())
     address: '',
     type: plainText(r.tipo_evento),
     topic: plainText(r.materia),
+    district: plainText(r.distrito),
     image: safeUrl(r.imagen),
     url: safeUrl(r.redireccion),
     sessions: parseSessions(r.fechas),
@@ -407,6 +414,7 @@ export function normalizeNotices(rows, now = Date.now()) {
       start,
       end,
       lines: [...new Set(lines)],
+      district: plainText(r.distrito),
       url: resolveUrl(r.alias ?? r.url, `${SITE}/es/avisos`),
     }];
   }).sort((a, b) => (a.end ?? Infinity) - (b.end ?? Infinity) || (b.start ?? 0) - (a.start ?? 0));
@@ -477,3 +485,45 @@ export function bathingForBeach(summary, title) {
     date: Math.max(...zones.map((z) => z.date)),
   };
 }
+
+// «Línea 14 Sotiello - Pol. Somonte, Línea 25 Tremañes» → Map { 'L14' => 'Sotiello - Pol. Somonte', 'L25' => 'Tremañes' }
+export function parseLineNames(text) {
+  const names = new Map();
+  for (const match of String(text ?? '').matchAll(/L[íi]nea\s+(\w+)\s*([^,]*)/g)) {
+    const code = `L${match[1]}`;
+    if (!names.has(code)) names.set(code, plainText(match[2]));
+  }
+  return names;
+}
+
+export function compareLines(a, b) {
+  const rank = (code) => ({ L: 0, B: 1 }[code[0]] ?? 2);
+  const num = (code) => Number(code.replace(/\D/g, '')) || 0;
+  return rank(a) - rank(b) || num(a) - num(b) || a.localeCompare(b);
+}
+
+// Un campo de distrito con cuatro o más distritos se refiere a toda la ciudad.
+export function inDistrict(text, district) {
+  const list = String(text ?? '').split(',').map((d) => d.trim()).filter(Boolean);
+  return Boolean(district) && (list.length >= 4 || list.includes(district));
+}
+
+// Centro aproximado de cada distrito a partir de los lugares que el portal sitúa en él.
+export function districtCentroids(places) {
+  const sums = {};
+  for (const place of places) {
+    if (!DISTRICTS.includes(place.district)) continue;
+    const sum = (sums[place.district] ??= { lat: 0, lon: 0, n: 0 });
+    sum.lat += place.lat;
+    sum.lon += place.lon;
+    sum.n += 1;
+  }
+  return Object.fromEntries(Object.entries(sums).map(([district, s]) => [district, { lat: s.lat / s.n, lon: s.lon / s.n }]));
+}
+
+export function nearestDistrict(point, centroids) {
+  return Object.entries(centroids)
+    .sort(([, a], [, b]) => distanceKm(point, a) - distanceKm(point, b))[0]?.[0] ?? '';
+}
+
+export const linesAffected = (notice, myLines) => notice.lines.filter((line) => myLines.includes(line));

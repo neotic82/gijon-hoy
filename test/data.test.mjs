@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aqiLevel, bathingForBeach, decodeEntities, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
+  aqiLevel, bathingForBeach, compareLines, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
 } from '../js/data.js';
 
 test('toNumber admite los tipos mezclados del portal', () => {
@@ -206,4 +206,39 @@ test('normalizeEvents ordena cronológicamente y coloca cada acto largo futuro e
     { id: '5', titulo: 'Noviembre', fechas: '2026-11-15', hora_inicio: '18:00' },
   ], [], now);
   assert.deepEqual(events.map((e) => e.title), ['Expo en curso', 'Mañana', 'Noviembre', 'Expo futura', 'Diciembre']);
+});
+
+test('parseLineNames y compareLines', () => {
+  const names = parseLineNames('Línea 14 Sotiello - Pol. Somonte, Línea 25 Tremañes - Infanzón, Línea 14 Repetida');
+  assert.deepEqual([...names], [['L14', 'Sotiello - Pol. Somonte'], ['L25', 'Tremañes - Infanzón']]);
+  assert.deepEqual(parseLineNames(''), new Map());
+  assert.deepEqual(['B2', 'L10', 'E71', 'L2', 'B10'].sort(compareLines), ['L2', 'L10', 'B2', 'B10', 'E71']);
+});
+
+test('inDistrict trata las listas largas como toda la ciudad', () => {
+  assert.equal(inDistrict('Este', 'Este'), true);
+  assert.equal(inDistrict('Centro', 'Este'), false);
+  assert.equal(inDistrict('Centro, Este, Llano, Sur, Oeste', 'Sur'), true);
+  assert.equal(inDistrict('', 'Este'), false);
+  assert.equal(inDistrict('Este', ''), false);
+});
+
+test('districtCentroids y nearestDistrict', () => {
+  const centroids = districtCentroids([
+    { district: 'Este', lat: 43.54, lon: -5.64 }, { district: 'Este', lat: 43.52, lon: -5.62 },
+    { district: 'Oeste', lat: 43.54, lon: -5.70 }, { district: 'Centro, Este, Llano, Sur, Oeste', lat: 0, lon: 0 }, { district: '', lat: 0, lon: 0 },
+  ]);
+  assert.deepEqual(Object.keys(centroids).sort(), ['Este', 'Oeste']);
+  assert.ok(Math.abs(centroids.Este.lat - 43.53) < 1e-9);
+  assert.equal(nearestDistrict({ lat: 43.535, lon: -5.635 }, centroids), 'Este');
+  assert.equal(nearestDistrict({ lat: 43.5, lon: -5.6 }, {}), '');
+});
+
+test('normalizePlaces y normalizeNotices conservan distrito y líneas', () => {
+  const [place] = normalizePlaces([{ titulo: 'X', localizacion: 'Lon: -5.6, Lat: 43.54', distrito: 'Este', lineas_bus: 'Línea 10 Pumarín - Somió' }], 'parques');
+  assert.equal(place.district, 'Este');
+  assert.deepEqual(place.lineNames, [['L10', 'Pumarín - Somió']]);
+  const [notice] = normalizeNotices([{ titulo: 'Obras', fecha_fin_html: '2099-01-01T00:00:00+0100', field_lineas_de_autobus: 'L10, L14', distrito: 'Este' }], 0);
+  assert.equal(notice.district, 'Este');
+  assert.deepEqual(linesAffected(notice, ['L14', 'L1']), ['L14']);
 });

@@ -1,6 +1,6 @@
 import {
   AIR_ID, AQI_LEVELS, CATEGORIES, EVENT_IDS, NOTICES_ID, POLLUTANT_LABELS, WATER_IDS, WEB_URLS,
-  bathingForBeach, dataUrl, distanceKm, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces,
+  DISTRICTS, bathingForBeach, compareLines, dataUrl, distanceKm, districtCentroids, districtLabel, inDistrict, linesAffected, nearestDistrict, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces,
   occursBetween, plainText, summarizeAir, summarizeBathing, summarizeTapWater,
 } from './data.js';
 
@@ -14,11 +14,12 @@ const state = {
   air: null, airError: false, airLoadedAt: 0,
   feedsLoadedAt: 0,
   events: null, eventsError: false, agendaFromWeb: false,
-  agendaFilter: { q: '', when: 'today', topic: '' }, agendaLimit: 40,
+  agendaFilter: { q: '', when: 'today', topic: '', zone: false }, agendaLimit: 40,
   notices: null, noticesError: false, noticesFromWeb: false, noticesExpanded: false,
   tap: null, bathing: null, waterError: false, waterParam: 'clorolibre',
   places: {}, placesFailed: new Set(),
   stationId: store('station'),
+  prefs: null,
   me: null,
   layersOn: new Set(CATEGORIES.filter((c) => c.on).map((c) => c.key).concat('aire')),
 };
@@ -41,14 +42,14 @@ function h(tag, attrs = {}, ...children) {
     else if (key === 'style') el.style.cssText = value;
     else el.setAttribute(key, value === true ? '' : value);
   }
-  el.append(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+  el.append(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
   return el;
 }
 
 const byId = (id) => document.getElementById(id);
 const fill = (id, ...nodes) => {
   // Durante una actualización de la PWA puede convivir un HTML antiguo con este script.
-  byId(id)?.replaceChildren(...nodes.flat().filter((node) => node !== null && node !== undefined && node !== false));
+  byId(id)?.replaceChildren(...nodes.flat(Infinity).filter((node) => node !== null && node !== undefined && node !== false));
 };
 const levelVar = (level) => `--level: var(--l${level})`;
 const skeleton = () => h('div', { class: 'skeleton' });
@@ -344,8 +345,18 @@ function renderEvents() {
     return;
   }
   const short = state.events.filter((e) => !isLongRunning(e));
-  const highlights = (short.length ? short : state.events).slice(0, 4);
-  fill('next-events', highlights.length ? highlights.map(eventRow) : h('div', { class: 'message' }, 'No hay actos próximos. Consulta la ', officialLink(), '.'));
+  const pool = short.length ? short : state.events;
+  const zone = state.prefs.district;
+  const local = zone ? pool.filter((e) => inDistrict(e.district, zone)).slice(0, 3) : [];
+  const rest = pool.filter((e) => !local.includes(e)).slice(0, local.length ? 2 : 4);
+  fill('next-events', pool.length
+    ? [
+      local.length > 0 && h('h3', { class: 'subhead' }, `En tu zona · ${districtLabel(zone)}`),
+      local.map(eventRow),
+      local.length > 0 && h('h3', { class: 'subhead' }, 'En todo Gijón'),
+      rest.map(eventRow),
+    ]
+    : h('div', { class: 'message' }, 'No hay actos próximos. Consulta la ', officialLink(), '.'));
   fill('agenda-notice', state.agendaFromWeb
     ? h('p', { class: 'note first' }, 'Fuente: agenda de la web municipal y agenda institucional.')
     : h('p', { class: 'callout' }, 'No se ha podido cargar la agenda de la web municipal. Se muestran los datos abiertos, que están incompletos. Consulta la ', officialLink(), '.'));
@@ -385,6 +396,13 @@ function renderAgendaFilters() {
     h('select', { 'aria-label': 'Tema', onchange: (e) => update({ topic: e.target.value }) },
       h('option', { value: '' }, 'Todos los temas'),
       [...counts].sort((a, b) => b[1] - a[1]).map(([topic, count]) => h('option', { value: topic, selected: topic === filter.topic }, `${topic} (${count})`))),
+    state.prefs.district && h('button', {
+      type: 'button', class: 'zone-toggle', 'aria-pressed': String(filter.zone),
+      onclick: (event) => {
+        event.currentTarget.setAttribute('aria-pressed', String(!filter.zone));
+        update({ zone: !filter.zone });
+      },
+    }, `Solo en mi zona · ${districtLabel(state.prefs.district)}`),
     h('div', { class: 'segments', role: 'group', 'aria-label': 'Cuándo' }, when.map(([value, label]) => h('button', {
       'aria-pressed': String(filter.when === value),
       onclick: (event) => {
@@ -396,10 +414,11 @@ function renderAgendaFilters() {
 }
 
 function renderAgendaList() {
-  const { q, when, topic } = state.agendaFilter;
+  const { q, when, topic, zone } = state.agendaFilter;
   const query = normalizeText(q.trim());
   const range = agendaRange(when);
   const matches = state.events.filter((e) => (!topic || e.topic === topic)
+    && (!zone || !state.prefs.district || inDistrict(e.district, state.prefs.district))
     && (!query || normalizeText(`${e.title} ${e.place} ${e.type}`).includes(query))
     && (!range || occursBetween(e, range[0], range[1])));
   if (!matches.length) {
@@ -448,15 +467,25 @@ function renderNotices() {
     fill('notices', h('div', { class: 'message' }, state.noticesFromWeb ? 'No hay avisos de movilidad vigentes.' : 'No se ha podido consultar la web municipal y los datos abiertos no tienen avisos vigentes.'));
     return;
   }
-  const visible = state.noticesExpanded ? state.notices : state.notices.slice(0, 3);
+  const myLines = state.prefs.lines;
+  // Primero los avisos que afectan a tus líneas; el resto mantiene su orden.
+  const sorted = [...state.notices].sort((a, b) => Number(linesAffected(b, myLines).length > 0) - Number(linesAffected(a, myLines).length > 0));
+  const visible = state.noticesExpanded ? sorted : sorted.slice(0, 3);
+  const anyMine = myLines.length > 0 && sorted.some((n) => linesAffected(n, myLines).length);
   fill('notices',
-    visible.map((notice) => h('article', { class: 'notice' },
-      h('h3', {}, notice.url ? h('a', { href: notice.url, rel: 'noopener', target: '_blank' }, notice.title) : notice.title),
-      h('p', {}, [notice.type, noticeWhen(notice)].filter(Boolean).join(' · ')),
-      notice.lines.length > 8
-        ? h('p', { class: 'lines-text' }, `${notice.lines.length} líneas de bus afectadas`)
-        : notice.lines.length > 0 && h('div', { class: 'lines', 'aria-label': 'Líneas afectadas' }, notice.lines.map((line) => h('span', {}, line))),
-    )),
+    myLines.length > 0 && !anyMine && h('p', { class: 'note first' }, 'Ningún aviso vigente afecta a tus líneas.'),
+    visible.map((notice) => {
+      const mine = linesAffected(notice, myLines);
+      return h('article', { class: mine.length ? 'notice mine' : 'notice' },
+        h('h3', {}, notice.url ? h('a', { href: notice.url, rel: 'noopener', target: '_blank' }, notice.title) : notice.title),
+        mine.length > 0 && h('p', { class: 'mine-tag' }, `Afecta a ${mine.length > 1 ? 'tus líneas' : 'tu línea'} ${mine.join(', ')}`),
+        h('p', {}, [notice.type, noticeWhen(notice)].filter(Boolean).join(' · ')),
+        notice.lines.length > 8
+          ? h('p', { class: 'lines-text' }, `${notice.lines.length} líneas de bus afectadas`)
+          : notice.lines.length > 0 && h('div', { class: 'lines', 'aria-label': 'Líneas afectadas' },
+            notice.lines.map((line) => h('span', { class: mine.includes(line) ? 'mine' : '' }, line))),
+      );
+    }),
     state.notices.length > 3 && h('button', {
       class: 'more',
       onclick: () => { state.noticesExpanded = !state.noticesExpanded; renderNotices(); },
@@ -547,15 +576,152 @@ function renderBeaches() {
     return;
   }
   // El conjunto «Playas» incluye también una ficha de zonas para mascotas, que sigue en el mapa.
-  const sorted = beaches.filter((b) => !/mascotas/i.test(b.title)).sort((a, b) => (state.me ? distanceKm(state.me, a) - distanceKm(state.me, b) : a.lon - b.lon));
+  const sorted = beaches.filter((b) => !/mascotas/i.test(b.title)).sort((a, b) => (reference() ? distanceKm(reference(), a) - distanceKm(reference(), b) : a.lon - b.lon));
   fill('beaches', sorted.map((beach) => h('button', { class: 'beach', onclick: () => focusPlace(beach) },
     beach.image ? h('img', { class: 'photo', src: beach.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: (e) => e.target.replaceWith(h('span', { class: 'photo' })) }) : h('span', { class: 'photo' }),
     h('div', {},
       h('h3', {}, beach.title),
-      h('p', {}, state.me ? `A ${number(distanceKm(state.me, beach), 1)} km` : beach.address || 'Gijón'),
+      h('p', {}, reference() ? `A ${number(distanceKm(reference(), beach), 1)} km` : beach.address || 'Gijón'),
       bathingForBeach(state.bathing, beach.title) && h('p', { class: 'bath' }, bathText(bathingForBeach(state.bathing, beach.title))),
     ),
   )));
+}
+
+// Personalización: se guarda solo en este dispositivo.
+function loadPrefs() {
+  const empty = { lines: [], district: '', point: null };
+  try {
+    const saved = JSON.parse(store('prefs') || '{}');
+    const point = saved.point && Number.isFinite(saved.point.lat) && Number.isFinite(saved.point.lon) ? { lat: saved.point.lat, lon: saved.point.lon } : null;
+    return {
+      lines: Array.isArray(saved.lines) ? saved.lines.filter((l) => typeof l === 'string' && /^[A-Z]\d+$/.test(l)).slice(0, 40) : [],
+      district: DISTRICTS.includes(saved.district) ? saved.district : '',
+      point,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+const savePrefs = () => store('prefs', JSON.stringify(state.prefs));
+const allPlaces = () => Object.values(state.places).flat();
+const zonePoint = () => state.prefs.point ?? districtCentroids(allPlaces())[state.prefs.district] ?? null;
+const reference = () => state.me ?? zonePoint();
+
+function knownLines() {
+  const names = new Map();
+  allPlaces().forEach((place) => place.lineNames?.forEach(([code, name]) => { if (!names.get(code)) names.set(code, name); }));
+  (state.notices ?? []).forEach((notice) => notice.lines.forEach((code) => { if (!names.has(code)) names.set(code, ''); }));
+  state.prefs.lines.forEach((code) => { if (!names.has(code)) names.set(code, ''); });
+  return [...names].sort(([a], [b]) => compareLines(a, b));
+}
+
+function prefsChanged() {
+  savePrefs();
+  renderPersonal();
+  renderPrefsSheet();
+  renderNotices();
+  renderAir();
+  if (state.events) renderEvents();
+  renderBeaches();
+}
+
+function setZone(district, point = null) {
+  state.prefs.district = district;
+  state.prefs.point = district ? point : null;
+  const zone = zonePoint();
+  if (zone && state.air?.length) {
+    const nearest = [...state.air].sort((a, b) => distanceKm(zone, a) - distanceKm(zone, b))[0];
+    state.stationId = nearest.id;
+    store('station', String(nearest.id));
+  }
+  if (!district) state.agendaFilter.zone = false;
+  prefsChanged();
+}
+
+function useLocationAsZone() {
+  const note = byId('zone-note');
+  if (note) note.textContent = 'Buscando tu ubicación…';
+  navigator.geolocation.getCurrentPosition((position) => {
+    // Se redondea a unos 100 m: basta para la zona y no guarda tu posición exacta.
+    const point = { lat: Math.round(position.coords.latitude * 1000) / 1000, lon: Math.round(position.coords.longitude * 1000) / 1000 };
+    const district = nearestDistrict(point, districtCentroids(allPlaces()));
+    if (!district) {
+      if (note) note.textContent = 'Aún se están cargando los datos; inténtalo en unos segundos.';
+      return;
+    }
+    setZone(district, point);
+  }, () => {
+    if (note) note.textContent = 'No se pudo obtener tu ubicación. Elige un distrito.';
+  }, { timeout: 10000, maximumAge: 300000 });
+}
+
+function toggleLine(code) {
+  const lines = new Set(state.prefs.lines);
+  if (lines.has(code)) lines.delete(code);
+  else lines.add(code);
+  state.prefs.lines = [...lines].sort(compareLines);
+  prefsChanged();
+}
+
+function openPrefs() {
+  renderPrefsSheet();
+  byId('prefs-sheet')?.showModal();
+}
+
+function zoneText() {
+  const { district, point } = state.prefs;
+  return point ? `cerca de ti (${districtLabel(district)})` : districtLabel(district);
+}
+
+function renderPersonal() {
+  const { lines, district } = state.prefs;
+  if (!lines.length && !district) {
+    fill('personal', h('div', { class: 'personal-cta' },
+      h('div', {}, h('strong', {}, 'Personaliza tu portada'), h('p', {}, 'Elige tus líneas de bus y tu zona para ver primero lo que te afecta.')),
+      h('button', { type: 'button', onclick: openPrefs }, 'Empezar')));
+    return;
+  }
+  fill('personal', h('div', { class: 'personal-row' },
+    h('p', {},
+      district && h('span', {}, h('strong', {}, 'Tu zona: '), zoneText()),
+      lines.length > 0 && h('span', {}, h('strong', {}, lines.length > 1 ? 'Tus líneas: ' : 'Tu línea: '), lines.join(', '))),
+    h('button', { type: 'button', class: 'link-btn', onclick: openPrefs }, 'Editar')));
+}
+
+function renderPrefsSheet() {
+  const sheet = byId('prefs-sheet');
+  if (!sheet) return;
+  const scroll = sheet.scrollTop;
+  const { lines, district, point } = state.prefs;
+  const all = knownLines();
+  const names = new Map(all);
+  fill('prefs-sheet',
+    h('div', { class: 'sheet-head' }, h('h2', {}, 'Personalizar'), h('button', { type: 'button', onclick: () => sheet.close() }, 'Hecho')),
+    h('div', { class: 'sheet-body' },
+      h('section', { class: 'sheet-group' },
+        h('div', { class: 'sheet-group-head' }, h('h3', {}, 'Mi zona'),
+          district && h('button', { type: 'button', onclick: () => setZone('') }, 'Quitar')),
+        h('div', { class: 'district-grid', role: 'group', 'aria-label': 'Distrito' }, DISTRICTS.map((d) => h('button', {
+          type: 'button', 'aria-pressed': String(district === d && !point),
+          onclick: () => setZone(district === d && !point ? '' : d),
+        }, districtLabel(d)))),
+        navigator.geolocation && h('button', { type: 'button', class: 'more', 'aria-pressed': String(Boolean(point)), onclick: useLocationAsZone },
+          point ? `Usando tu ubicación (${districtLabel(district)}) · Actualizar` : 'Usar mi ubicación'),
+        h('p', { class: 'note', id: 'zone-note', role: 'status' }, 'Tu zona y tus líneas se guardan solo en este dispositivo.')),
+      h('section', { class: 'sheet-group' },
+        h('div', { class: 'sheet-group-head' }, h('h3', {}, 'Mis líneas de bus'),
+          lines.length > 0 && h('button', { type: 'button', onclick: () => { state.prefs.lines = []; prefsChanged(); } }, 'Quitar todas')),
+        all.length
+          ? h('div', { class: 'line-grid', role: 'group', 'aria-label': 'Líneas de bus' }, all.map(([code, name]) => h('button', {
+            type: 'button', 'aria-pressed': String(lines.includes(code)), title: name || code, 'aria-label': name ? `${code}, ${name}` : code,
+            onclick: () => toggleLine(code),
+          }, code)))
+          : h('p', { class: 'note' }, 'Cargando líneas…'),
+        lines.length > 0 && h('ul', { class: 'line-list' }, lines.map((code) => h('li', {}, h('strong', {}, code), names.get(code) ? ` ${names.get(code)}` : '')))),
+    ),
+  );
+  sheet.scrollTop = scroll;
 }
 
 // Mapa
@@ -567,7 +733,8 @@ let pendingFocus = null;
 
 function initMap() {
   if (map || !window.L) return;
-  map = L.map('map', { zoomControl: true }).setView(CENTER, 13);
+  const zone = zonePoint();
+  map = L.map('map', { zoomControl: true }).setView(zone ? [zone.lat, zone.lon] : CENTER, zone ? 14 : 13);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Datos: Ayto. de Gijón (CC BY 4.0)',
@@ -778,6 +945,11 @@ function start() {
       loadEvents();
     }
   });
+  state.prefs = loadPrefs();
+  const prefsSheet = byId('prefs-sheet');
+  byId('prefs-open')?.addEventListener('click', openPrefs);
+  prefsSheet?.addEventListener('click', (event) => { if (event.target === prefsSheet) prefsSheet.close(); });
+  renderPersonal();
   const sheet = byId('layers-sheet');
   byId('layers-open')?.addEventListener('click', () => sheet.showModal());
   sheet?.addEventListener('click', (event) => { if (event.target === sheet) sheet.close(); });
