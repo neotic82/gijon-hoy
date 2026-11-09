@@ -647,7 +647,7 @@ export function googleCalendarUrl(event) {
 
 // Tiempo y mar: Open-Meteo (CC BY 4.0). El punto marino más cercano con datos está en mar abierto.
 export const WEATHER_URLS = {
-  forecast: 'https://api.open-meteo.com/v1/forecast?latitude=43.5357&longitude=-5.6615&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset,daylight_duration&timezone=Europe%2FMadrid&forecast_days=7',
+  forecast: 'https://api.open-meteo.com/v1/forecast?latitude=43.5357&longitude=-5.6615&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,is_day,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset,daylight_duration&timezone=Europe%2FMadrid&forecast_days=7',
   marine: 'https://marine-api.open-meteo.com/v1/marine?latitude=43.552&longitude=-5.652&current=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period,wind_wave_height,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max&timezone=Europe%2FMadrid&forecast_days=7',
 };
 
@@ -660,6 +660,21 @@ const WEATHER_CODES = {
   95: 'Tormenta', 96: 'Tormenta con granizo', 99: 'Tormenta con granizo',
 };
 export const weatherText = (code) => WEATHER_CODES[code] ?? '';
+
+// Icono para cada código WMO; de noche, luna en lugar de sol.
+export function weatherIcon(code, isDay = true) {
+  const c = Number(code);
+  if (c === 0 || c === 1) return isDay ? 'sun' : 'moon';
+  if (c === 2) return isDay ? 'partly' : 'partly-night';
+  if (c === 3) return 'cloud';
+  if (c === 45 || c === 48) return 'fog';
+  if (c >= 51 && c <= 57) return 'drizzle';
+  if (c >= 61 && c <= 67) return 'rain';
+  if (c >= 80 && c <= 82) return isDay ? 'showers' : 'rain';
+  if ((c >= 71 && c <= 77) || c === 85 || c === 86) return 'snow';
+  if (c >= 95) return 'storm';
+  return '';
+}
 
 export function compass(degrees) {
   if (degrees === null || !Number.isFinite(degrees)) return '';
@@ -688,12 +703,14 @@ export function summarizeWeather(data, now = Date.now()) {
       rain: toNumber(hourly.precipitation_probability?.[i]),
       precip: toNumber(hourly.precipitation?.[i]),
       code: hourly.weather_code?.[i],
+      isDay: hourly.is_day?.[i] !== 0,
       wind: toNumber(hourly.wind_speed_10m?.[i]),
       dir: compass(toNumber(hourly.wind_direction_10m?.[i])),
     }))
     .filter((p) => p.time !== null && p.time > now && p.temp !== null);
   const days = (daily.time ?? []).map((date, i) => ({
     date: openMeteoTime(date),
+    code: daily.weather_code?.[i],
     text: weatherText(daily.weather_code?.[i]),
     max: toNumber(daily.temperature_2m_max?.[i]),
     min: toNumber(daily.temperature_2m_min?.[i]),
@@ -717,6 +734,8 @@ export function summarizeWeather(data, now = Date.now()) {
       cloud: toNumber(current.cloud_cover),
       precip: toNumber(current.precipitation),
       text: weatherText(current.weather_code),
+      code: current.weather_code,
+      isDay: current.is_day !== 0,
       wind: toNumber(current.wind_speed_10m),
       gusts: toNumber(current.wind_gusts_10m),
       dir: compass(toNumber(current.wind_direction_10m)),

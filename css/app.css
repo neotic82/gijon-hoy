@@ -521,10 +521,10 @@ button, select, input { font: inherit; color: inherit; }
 .wx-strip > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--radius-s); background: var(--surface-2); }
 .wx-strip small { font-size: .72rem; color: var(--muted); line-height: 1.25; }
 .wx-strip b { font-size: 1.05rem; }
-.day { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: .88rem; }
+.day { display: grid; grid-template-columns: 30px 1fr auto auto auto; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: .88rem; }
 .day:first-child { border-top: 0; padding-top: 0; }
 .day small { display: block; color: var(--muted); font-size: .74rem; }
-.day-rain, .day-wind { min-width: 48px; text-align: right; }
+.day-rain, .day-wind { min-width: 44px; text-align: right; white-space: nowrap; }
 .day-temp { min-width: 60px; text-align: right; white-space: nowrap; }
 .day-temp b { font-size: 1rem; }
 .day-temp span { color: var(--muted); margin-left: 6px; }
@@ -541,6 +541,25 @@ button, select, input { font: inherit; color: inherit; }
 .sea-days { margin-top: 14px; font-size: .86rem; }
 .sea-days thead th { color: var(--muted); font-weight: 700; }
 .sea-days td { text-align: right; }
+
+/* Iconos del tiempo */
+.wx-ic { display: inline-grid; place-items: center; flex: none; color: var(--wx); --wx: #64748b; }
+.wx-ic svg { width: 24px; height: 24px; }
+.wx-ic.big svg { width: 46px; height: 46px; stroke-width: 1.75; }
+.wx-ic.day-ic svg { width: 28px; height: 28px; }
+.wx-strip .wx-ic { margin: 2px 0; }
+.wx-sun, .wx-partly, .wx-showers { --wx: #d97706; }
+.wx-moon, .wx-partly-night { --wx: #6366f1; }
+.wx-cloud, .wx-fog { --wx: #64748b; }
+.wx-drizzle, .wx-rain, .wx-snow { --wx: #0284c7; }
+.wx-storm { --wx: #7c3aed; }
+@media (prefers-color-scheme: dark) {
+  .wx-sun, .wx-partly, .wx-showers { --wx: #fbbf24; }
+  .wx-moon, .wx-partly-night { --wx: #a5b4fc; }
+  .wx-cloud, .wx-fog { --wx: #94a3b8; }
+  .wx-drizzle, .wx-rain, .wx-snow { --wx: #38bdf8; }
+  .wx-storm { --wx: #c4b5fd; }
+}
 
 /* Mapa oscuro: se oscurecen solo las teselas, sin tocar los puntos ni cambiar de proveedor. */
 @media (prefers-color-scheme: dark) {

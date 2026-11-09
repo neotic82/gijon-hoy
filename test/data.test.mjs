@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aqiLevel, bathingForBeach, buildIcs, moonPhase, parseTides, tideAt, tideCurve, tideUrl, compareLines, compass, googleCalendarUrl, parseKml, summarizeMarine, summarizeWeather, weatherText, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
+  aqiLevel, bathingForBeach, buildIcs, weatherIcon, moonPhase, parseTides, tideAt, tideCurve, tideUrl, compareLines, compass, googleCalendarUrl, parseKml, summarizeMarine, summarizeWeather, weatherText, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
 } from '../js/data.js';
 
 test('toNumber admite los tipos mezclados del portal', () => {
@@ -347,4 +347,20 @@ test('moonPhase identifica las fases principales', () => {
   assert.ok(full.illumination > 0.99);
   assert.equal(moonPhase(newMoon + 2 * 86400e3).tides, 'vivas');
   assert.equal(moonPhase(newMoon + 9 * 86400e3).tides, 'muertas');
+});
+
+test('weatherIcon elige el icono por código y por día o noche', () => {
+  assert.equal(weatherIcon(0), 'sun');
+  assert.equal(weatherIcon(1, false), 'moon');
+  assert.equal(weatherIcon(2), 'partly');
+  assert.equal(weatherIcon(2, false), 'partly-night');
+  assert.equal(weatherIcon(3), 'cloud');
+  assert.equal(weatherIcon(48), 'fog');
+  assert.equal(weatherIcon(53), 'drizzle');
+  assert.equal(weatherIcon(63), 'rain');
+  assert.equal(weatherIcon(81), 'showers');
+  assert.equal(weatherIcon(81, false), 'rain');
+  assert.equal(weatherIcon(73), 'snow');
+  assert.equal(weatherIcon(96), 'storm');
+  assert.equal(weatherIcon(undefined), '');
 });
