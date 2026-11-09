@@ -636,21 +636,81 @@ function refreshMap() {
   if (pendingFocus) applyFocus();
 }
 
-function renderChips() {
-  const items = [{ key: 'aire', label: 'Estaciones de aire', color: 'var(--ink)' }, ...CATEGORIES]
+const LAYER_GROUPS = [
+  ['Ocio y turismo', ['playas', 'parques', 'monumentos', 'museos', 'restaurantes']],
+  ['Alojamiento', ['hoteles', 'hostales', 'apartamentos', 'campings', 'albergues']],
+  ['Servicios', ['cajeros', 'bibliotecas']],
+  ['Medio ambiente', ['aire']],
+];
+
+function layerItems() {
+  return [{ key: 'aire', label: 'Estaciones de aire', color: 'var(--ink)' }, ...CATEGORIES]
     .filter((item) => item.key === 'aire' || state.places[item.key] === undefined || state.places[item.key].length > 0);
+}
+
+const layerCount = (key) => (key === 'aire' ? state.air?.length : state.places[key]?.length);
+
+function toggleLayer(key, on) {
+  if (on) state.layersOn.add(key);
+  else state.layersOn.delete(key);
+  setLayer(key, on);
+}
+
+function renderChips() {
+  const items = layerItems();
   fill('chips', items.map((item) => {
-    const count = item.key === 'aire' ? state.air?.length : state.places[item.key]?.length;
+    const count = layerCount(item.key);
     return h('button', {
       class: 'chip', style: `--c:${item.color}`, 'aria-pressed': String(state.layersOn.has(item.key)),
       onclick: () => {
-        if (state.layersOn.has(item.key)) state.layersOn.delete(item.key);
-        else state.layersOn.add(item.key);
-        setLayer(item.key, state.layersOn.has(item.key));
+        toggleLayer(item.key, !state.layersOn.has(item.key));
         renderChips();
       },
     }, h('i', { class: item.glyph ? 'glyph' : '' }, item.glyph ?? ''), item.label, count ? ` (${count})` : '');
   }));
+  const active = items.filter((item) => state.layersOn.has(item.key)).length;
+  const badge = byId('layers-count');
+  if (badge) {
+    badge.textContent = String(active);
+    byId('layers-open').setAttribute('aria-label', `Capas del mapa, ${active} activas`);
+  }
+  renderLayerSheet(items);
+}
+
+function renderLayerSheet(items) {
+  const sheet = byId('layers-sheet');
+  if (!sheet) return;
+  const scroll = sheet.scrollTop;
+  const row = (item) => h('label', { class: 'layer-row' },
+    h('i', { style: `--c:${item.color}` }, item.glyph ?? ''),
+    h('span', {}, item.label),
+    layerCount(item.key) ? h('small', {}, String(layerCount(item.key))) : null,
+    h('input', {
+      type: 'checkbox', role: 'switch', 'data-layer': item.key, checked: state.layersOn.has(item.key),
+      onchange: (event) => {
+        toggleLayer(item.key, event.target.checked);
+        renderChips();
+        sheet.querySelector(`[data-layer="${item.key}"]`)?.focus();
+      },
+    }),
+  );
+  fill('layers-sheet',
+    h('div', { class: 'sheet-head' }, h('h2', {}, 'Capas del mapa'), h('button', { type: 'button', onclick: () => sheet.close() }, 'Cerrar')),
+    h('div', { class: 'sheet-body' }, LAYER_GROUPS.map(([title, keys]) => {
+      const group = keys.map((key) => items.find((item) => item.key === key)).filter(Boolean);
+      if (!group.length) return null;
+      const allOn = group.every((item) => state.layersOn.has(item.key));
+      return h('section', { class: 'sheet-group' },
+        h('div', { class: 'sheet-group-head' },
+          h('h3', {}, title),
+          group.length > 1 && h('button', {
+            type: 'button',
+            onclick: () => { group.forEach((item) => toggleLayer(item.key, !allOn)); renderChips(); },
+          }, allOn ? 'Ninguna' : 'Todas')),
+        group.map(row));
+    }).filter(Boolean)),
+  );
+  sheet.scrollTop = scroll;
 }
 
 function applyFocus() {
@@ -707,6 +767,9 @@ function start() {
       loadEvents();
     }
   });
+  const sheet = byId('layers-sheet');
+  byId('layers-open')?.addEventListener('click', () => sheet.showModal());
+  sheet?.addEventListener('click', (event) => { if (event.target === sheet) sheet.close(); });
   updateOnline();
   renderAir();
   renderEvents();

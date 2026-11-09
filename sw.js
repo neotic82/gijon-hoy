@@ -1,4 +1,4 @@
-const VERSION = 'v6';
+const VERSION = 'v7';
 const SHELL = `gijon-hoy-shell-${VERSION}`;
 const DATA = `gijon-hoy-data-${VERSION}`;
 const TILES = `gijon-hoy-tiles-${VERSION}`;
