@@ -1,5 +1,5 @@
 import {
-  AIR_ID, AQI_LEVELS, CATEGORIES, WEATHER_URLS, buildIcs, googleCalendarUrl, summarizeMarine, summarizeWeather, EVENT_IDS, NOTICES_ID, POLLUTANT_LABELS, WATER_IDS, WEB_URLS,
+  AIR_ID, AQI_LEVELS, CATEGORIES, WEATHER_URLS, buildIcs, googleCalendarUrl, moonPhase, parseTides, summarizeMarine, summarizeWeather, tideAt, tideCurve, tideUrl, weatherText, EVENT_IDS, NOTICES_ID, POLLUTANT_LABELS, WATER_IDS, WEB_URLS,
   DISTRICTS, MOBILITY, MOBILITY_COLOR, bathingForBeach, kmlUrl, parseKml, compareLines, dataUrl, distanceKm, districtCentroids, districtLabel, inDistrict, linesAffected, nearestDistrict, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces,
   occursBetween, plainText, summarizeAir, summarizeBathing, summarizeTapWater,
 } from './data.js';
@@ -20,7 +20,7 @@ const state = {
   places: {}, placesFailed: new Set(), mobility: {},
   stationId: store('station'),
   prefs: null,
-  weather: null, marine: null, weatherError: false,
+  weather: null, marine: null, tides: null, weatherError: false,
   me: null,
   layersOn: new Set(CATEGORIES.filter((c) => c.on).map((c) => c.key).concat('aire')),
 };
@@ -752,11 +752,52 @@ function renderPrefsSheet() {
 
 // Tiempo y mar
 async function loadWeather() {
-  const [forecast, marine] = await Promise.allSettled([fetchJson(WEATHER_URLS.forecast), fetchJson(WEATHER_URLS.marine)]);
+  const day = 86400e3;
+  const now = Date.now();
+  const [forecast, marine, ...tides] = await Promise.allSettled([
+    fetchJson(WEATHER_URLS.forecast),
+    fetchJson(WEATHER_URLS.marine),
+    ...[-1, 0, 1, 2].map((offset) => fetchJson(tideUrl(now + offset * day))),
+  ]);
   if (forecast.status === 'fulfilled') state.weather = summarizeWeather(forecast.value) ?? state.weather;
   if (marine.status === 'fulfilled') state.marine = summarizeMarine(marine.value) ?? state.marine;
+  const events = parseTides(tides.filter((t) => t.status === 'fulfilled').map((t) => t.value));
+  if (events.length) state.tides = events;
   state.weatherError = forecast.status === 'rejected';
   renderWeather();
+  renderWeatherView();
+}
+
+const capital = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+const fmtWeekdayName = fmt({ weekday: 'long' });
+function relativeDay(ms) {
+  const now = Date.now();
+  if (dayKey(ms) === dayKey(now)) return 'Hoy';
+  if (dayKey(ms) === dayKey(now + 86400e3)) return 'Mañana';
+  return capital(fmtWeekdayName.format(ms));
+}
+const hoursMinutes = (seconds) => `${Math.floor(seconds / 3600)} h ${Math.round((seconds % 3600) / 60)} min`;
+const stats = (pairs) => h('dl', { class: 'weather wx-grid' },
+  pairs.filter((pair) => pair && pair[1]).map(([label, value]) => h('div', {}, h('dt', {}, label), h('dd', {}, value))));
+const block = (title, ...children) => h('section', { class: 'block' }, h('div', { class: 'block-head' }, h('h2', {}, title)), ...children);
+const openMeteoLink = () => h('a', { href: 'https://open-meteo.com/', rel: 'noopener', target: '_blank' }, 'Weather data by Open-Meteo.com');
+
+function tideSummary() {
+  const now = state.tides && tideAt(state.tides, Date.now());
+  if (!now) return null;
+  return `${now.rising ? 'Subiendo' : 'Bajando'} · ${now.next.type === 'high' ? 'pleamar' : 'bajamar'} a las ${fmtHour.format(now.next.time)}`;
+}
+
+function weatherNow(w) {
+  return h('div', { class: 'wx-now' },
+    h('b', { class: 'wx-temp' }, `${number(w.current.temp)}°`),
+    h('div', {},
+      h('p', { class: 'wx-text' }, w.current.text || 'Ahora'),
+      h('p', { class: 'wx-sub' }, [
+        w.current.feels !== null && `Sensación ${number(w.current.feels)}°`,
+        w.today.max !== null && `Máx. ${number(w.today.max)}°`,
+        w.today.min !== null && `Mín. ${number(w.today.min)}°`,
+      ].filter(Boolean).join(' · '))));
 }
 
 function renderWeather() {
@@ -765,35 +806,126 @@ function renderWeather() {
     fill('weather', state.weatherError ? message('No se ha podido cargar el tiempo.', loadWeather) : skeleton());
     return;
   }
-  const stats = [
-    w.today.rain !== null && ['Lluvia hoy', `${number(w.today.rain)} %`],
-    w.current.wind !== null && ['Viento', `${number(w.current.wind)} km/h ${w.current.dir}`.trim()],
-    w.current.gusts !== null && ['Rachas', `${number(w.current.gusts)} km/h`],
-    w.today.uv !== null && ['Índice UV', number(w.today.uv)],
-    w.today.sunrise && ['Sol', `${w.today.sunrise}–${w.today.sunset}`],
-  ].filter(Boolean);
-  const sea = m && [
-    m.wave !== null && `olas de ${number(m.wave, 1)} m${m.dir ? ` del ${m.dir}` : ''}${m.period ? ` cada ${number(m.period)} s` : ''}`,
-    m.sst !== null && `agua a ${number(m.sst)} °C`,
-  ].filter(Boolean).join(' · ');
+  const tide = tideSummary();
+  const row = (label, value) => h('li', {}, h('span', {}, label), h('b', {}, value));
   fill('weather',
-    h('div', { class: 'wx-now' },
-      h('b', { class: 'wx-temp' }, `${number(w.current.temp)}°`),
-      h('div', {},
-        h('p', { class: 'wx-text' }, w.current.text || 'Ahora'),
-        h('p', { class: 'wx-sub' }, [
-          w.current.feels !== null && `Sensación ${number(w.current.feels)}°`,
-          w.today.max !== null && `Máx. ${number(w.today.max)}°`,
-          w.today.min !== null && `Mín. ${number(w.today.min)}°`,
-        ].filter(Boolean).join(' · ')))),
-    stats.length > 0 && h('dl', { class: 'weather' }, stats.map(([label, value]) => h('div', {}, h('dt', {}, label), h('dd', {}, value)))),
-    w.next.length > 0 && h('div', { class: 'wx-hours', role: 'list', 'aria-label': 'Próximas horas' }, w.next.map((p) => h('div', { role: 'listitem' },
-      h('small', {}, fmtHour.format(p.time)),
-      h('b', {}, `${number(p.temp)}°`),
-      p.rain !== null && h('small', { 'aria-label': `${p.rain} % de probabilidad de lluvia` }, `${number(p.rain)} %`)))),
-    sea && h('p', { class: 'wx-sea' }, h('strong', {}, 'Mar: '), sea),
-    h('p', { class: 'note' }, 'Previsión de modelos meteorológicos. El mar, en aguas abiertas frente a Gijón; no apto para navegación. ',
-      h('a', { href: 'https://open-meteo.com/', rel: 'noopener', target: '_blank' }, 'Weather data by Open-Meteo.com'), ' (CC BY 4.0).'),
+    weatherNow(w),
+    h('ul', { class: 'wx-summary' },
+      w.today.rain !== null && row('Lluvia hoy', `${number(w.today.rain)} %`),
+      w.current.wind !== null && row('Viento', `${number(w.current.wind)} km/h ${w.current.dir}`.trim()),
+      tide && row('Marea', tide),
+      m && m.wave !== null && row('Mar', `olas de ${number(m.wave, 1)} m${m.sst !== null ? ` · agua a ${number(m.sst)} °C` : ''}`)),
+    h('p', { class: 'note' }, openMeteoLink(), state.tides ? ' · Mareas: Instituto Hidrográfico de la Marina' : ''),
+  );
+}
+
+function tidesBlock(events, now) {
+  const current = tideAt(events, now);
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const from = start.getTime();
+  const to = from + 86400e3;
+  const curve = tideCurve(events, from, to);
+  const today = events.filter((e) => e.time >= from && e.time < to);
+  const highs = today.filter((e) => e.type === 'high').map((e) => e.height);
+  const lows = today.filter((e) => e.type === 'low').map((e) => e.height);
+  const range = highs.length && lows.length ? Math.max(...highs) - Math.min(...lows) : null;
+  const groups = new Map();
+  events.filter((e) => e.time >= from && e.time < from + 3 * 86400e3).forEach((e) => {
+    const key = dayKey(e.time);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  });
+  return block('Mareas',
+    current && h('div', { class: 'tide-now' },
+      h('b', {}, current.rising ? 'Subiendo' : 'Bajando'),
+      h('span', {}, `${current.next.type === 'high' ? 'Pleamar' : 'Bajamar'} a las ${fmtHour.format(current.next.time)}, ${number(current.next.height, 1)} m`),
+      h('small', {}, `Altura ahora: ${number(current.height, 1)} m aprox.`)),
+    curve.length > 2 && lineChart({ points: curve, label: 'Altura de la marea hoy', unit: 'm', digits: 1, formatX: (t) => fmtHour.format(t), xLabel: 'Hora' }),
+    h('div', { class: 'tide-days' }, [...groups.values()].map((list) => h('div', { class: 'tide-day' },
+      h('h3', { class: 'subhead' }, relativeDay(list[0].time)),
+      h('ul', {}, list.map((e) => h('li', { class: e.time < now ? 'past' : '' },
+        h('span', { class: `tide-kind ${e.type}` }, e.type === 'high' ? 'Pleamar' : 'Bajamar'),
+        h('b', {}, fmtHour.format(e.time)),
+        h('span', {}, `${number(e.height, 2)} m`))))))),
+    range !== null && h('p', { class: 'note' }, `Diferencia entre la pleamar y la bajamar de hoy: ${number(range, 1)} m.`),
+    h('p', { class: 'note' }, 'Predicción oficial del Instituto Hidrográfico de la Marina para el puerto de Gijón. Alturas sobre el cero hidrográfico del puerto; la altura actual es una aproximación. El viento y la presión pueden alterar el nivel real.'),
+  );
+}
+
+function seaBlock(m) {
+  return block('Mar',
+    stats([
+      m.wave !== null && ['Olas', `${number(m.wave, 1)} m`],
+      m.period !== null && ['Periodo', `${number(m.period)} s`],
+      m.dir && ['Dirección', `del ${m.dir}`],
+      m.swell !== null && ['Mar de fondo', `${number(m.swell, 1)} m${m.swellPeriod !== null ? ` · ${number(m.swellPeriod)} s` : ''}`],
+      m.windWave !== null && ['Mar de viento', `${number(m.windWave, 1)} m`],
+      m.sst !== null && ['Agua', `${number(m.sst)} °C`],
+    ]),
+    m.days.length > 0 && h('table', { class: 'data sea-days' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Día'), h('th', {}, 'Ola máx.'), h('th', {}, 'Periodo'), h('th', {}, 'Dirección'))),
+      h('tbody', {}, m.days.map((d) => h('tr', {},
+        h('th', { scope: 'row' }, relativeDay(d.date)),
+        h('td', {}, `${number(d.wave, 1)} m`),
+        h('td', {}, d.period !== null ? `${number(d.period)} s` : ''),
+        h('td', {}, d.dir))))),
+    h('p', { class: 'note' }, 'En aguas abiertas frente a Gijón, a unos 16 km de la costa. No apto para navegación.'),
+  );
+}
+
+function sunMoonBlock(w, now) {
+  const moon = moonPhase(now);
+  return block('Sol y luna',
+    stats([
+      ['Salida del sol', w.today.sunrise],
+      ['Puesta del sol', w.today.sunset],
+      w.today.daylight !== null && ['Horas de luz', hoursMinutes(w.today.daylight)],
+      ['Luna', moon.name],
+      ['Iluminada', `${number(moon.illumination * 100)} %`],
+      moon.tides && ['Mareas', moon.tides === 'vivas' ? 'Vivas' : 'Muertas'],
+    ]),
+    moon.tides && h('p', { class: 'note' }, 'Mareas vivas o muertas: estimación según la fase lunar.'),
+  );
+}
+
+function renderWeatherView() {
+  const { weather: w, marine: m, tides } = state;
+  if (!w && !tides) {
+    fill('weather-view', state.weatherError ? message('No se ha podido cargar el tiempo.', loadWeather) : skeleton());
+    return;
+  }
+  const now = Date.now();
+  fill('weather-view',
+    w && block('Ahora',
+      weatherNow(w),
+      stats([
+        w.current.humidity !== null && ['Humedad', `${number(w.current.humidity)} %`],
+        w.current.pressure !== null && ['Presión', `${number(w.current.pressure)} hPa`],
+        w.current.cloud !== null && ['Nubes', `${number(w.current.cloud)} %`],
+        w.current.wind !== null && ['Viento', `${number(w.current.wind)} km/h ${w.current.dir}`.trim()],
+        w.current.gusts !== null && ['Rachas', `${number(w.current.gusts)} km/h`],
+        w.current.precip !== null && ['Lluvia ahora', `${number(w.current.precip, 1)} mm`],
+        w.today.uv !== null && ['Índice UV hoy', number(w.today.uv)],
+      ])),
+    w && w.hours.length > 2 && block('Próximas 24 horas',
+      lineChart({ points: w.hours.map((p) => ({ time: p.time, value: p.temp })), label: 'Temperatura', unit: '°C', formatX: (t) => fmtHour.format(t), xLabel: 'Hora' }),
+      h('div', { class: 'wx-strip' }, w.hours.filter((_, i) => i % 2 === 0).map((p) => h('div', {},
+        h('small', {}, fmtHour.format(p.time)),
+        h('b', {}, `${number(p.temp)}°`),
+        h('small', {}, weatherText(p.code)),
+        p.rain !== null && h('small', {}, `Lluvia ${number(p.rain)} %`),
+        p.wind !== null && h('small', {}, `${number(p.wind)} km/h ${p.dir}`.trim()))))),
+    w && w.days.length > 0 && block('Próximos 7 días',
+      h('div', { class: 'days' }, w.days.map((d) => h('div', { class: 'day' },
+        h('div', {}, h('strong', {}, relativeDay(d.date)), h('small', {}, d.text)),
+        h('div', { class: 'day-rain' }, d.rain !== null ? `${number(d.rain)} %` : '', d.rainSum ? h('small', {}, `${number(d.rainSum, 1)} mm`) : null),
+        h('div', { class: 'day-wind' }, d.wind !== null ? `${number(d.wind)} km/h` : '', h('small', {}, d.dir)),
+        h('div', { class: 'day-temp' }, h('b', {}, d.max !== null ? `${number(d.max)}°` : ''), h('span', {}, d.min !== null ? `${number(d.min)}°` : '')))))),
+    tides && tidesBlock(tides, now),
+    m && seaBlock(m),
+    w && sunMoonBlock(w, now),
+    h('p', { class: 'credits' }, 'Tiempo y mar: ', openMeteoLink(), ' (CC BY 4.0), con modelos de ECMWF, DWD, NOAA y Météo-France y datos de Copernicus Marine. Mareas: © Instituto Hidrográfico de la Marina. Fase lunar: cálculo astronómico aproximado.'),
   );
 }
 
@@ -1070,7 +1202,7 @@ function focusPlace(place) {
 
 // Navegación
 function route() {
-  const tab = ['hoy', 'mapa', 'agenda', 'agua'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'hoy';
+  const tab = ['hoy', 'mapa', 'agenda', 'agua', 'tiempo'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'hoy';
   document.querySelectorAll('.view').forEach((view) => { view.hidden = view.id !== `view-${tab}`; });
   document.querySelectorAll('[data-tab]').forEach((link) => {
     if (link.dataset.tab === tab) link.setAttribute('aria-current', 'page');
@@ -1120,6 +1252,7 @@ function start() {
   renderEvents();
   renderNotices();
   renderWeather();
+  renderWeatherView();
   renderWater();
   renderBeaches();
   renderChips();

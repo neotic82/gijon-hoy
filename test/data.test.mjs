@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aqiLevel, bathingForBeach, buildIcs, compareLines, compass, googleCalendarUrl, parseKml, summarizeMarine, summarizeWeather, weatherText, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
+  aqiLevel, bathingForBeach, buildIcs, moonPhase, parseTides, tideAt, tideCurve, tideUrl, compareLines, compass, googleCalendarUrl, parseKml, summarizeMarine, summarizeWeather, weatherText, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
 } from '../js/data.js';
 
 test('toNumber admite los tipos mezclados del portal', () => {
@@ -303,13 +303,48 @@ test('tiempo: códigos, rumbo y resumen', () => {
   const weather = summarizeWeather({
     current: { temperature_2m: 20.1, apparent_temperature: 18.6, relative_humidity_2m: 58, weather_code: 3, wind_speed_10m: 11.6, wind_direction_10m: 173, wind_gusts_10m: 23 },
     hourly: { time: hours, temperature_2m: hours.map((_, i) => 15 + i), precipitation_probability: hours.map(() => 10), weather_code: hours.map(() => 3) },
-    daily: { temperature_2m_max: [22.7], temperature_2m_min: [17.2], precipitation_probability_max: [25], uv_index_max: [2.45], sunrise: ['2026-11-09T08:08'], sunset: ['2026-11-09T18:03'] },
+    daily: { time: ['2026-11-09'], temperature_2m_max: [22.7], temperature_2m_min: [17.2], precipitation_probability_max: [25], uv_index_max: [2.45], sunrise: ['2026-11-09T08:08'], sunset: ['2026-11-09T18:03'] },
   }, new Date(2026, 10, 9, 13, 30).getTime());
   assert.equal(weather.current.text, 'Cubierto');
   assert.equal(weather.current.dir, 'S');
   assert.equal(weather.today.sunset, '18:03');
   assert.deepEqual(weather.next.map((p) => p.temp), [17, 20, 23, 26]);
   assert.equal(summarizeWeather({}), null);
-  assert.deepEqual(summarizeMarine({ current: { wave_height: 0.5, wave_direction: 25, wave_period: 6.45, sea_surface_temperature: 16.1 } }), { wave: 0.5, period: 6.45, dir: 'NE', sst: 16.1 });
+  const sea = summarizeMarine({ current: { wave_height: 0.5, wave_direction: 25, wave_period: 6.45, sea_surface_temperature: 16.1, swell_wave_height: 0.36 }, daily: { time: ['2026-11-09'], wave_height_max: [0.64], wave_direction_dominant: [39], wave_period_max: [6.45] } });
+  assert.equal(sea.wave, 0.5);
+  assert.equal(sea.dir, 'NE');
+  assert.equal(sea.sst, 16.1);
+  assert.equal(sea.swell, 0.36);
+  assert.deepEqual(sea.days.map((d) => [d.wave, d.dir]), [[0.64, 'NE']]);
   assert.equal(summarizeMarine({ current: {} }), null);
+});
+
+test('mareas: horas en UTC, interpolación y curva', () => {
+  const tides = parseTides([
+    { mareas: { fecha: '2026-11-10', datos: { marea: [{ hora: '03:33', altura: '4.093', tipo: 'pleamar' }, { hora: '09:41', altura: '0.904', tipo: 'bajamar' }] } } },
+    { mareas: { fecha: '2026-11-10', datos: { marea: [{ hora: '03:33', altura: '4.093', tipo: 'pleamar' }, { hora: '15:52', altura: '3.962', tipo: 'pleamar' }] } } },
+    { error: 'x' }, null,
+  ]);
+  assert.deepEqual(tides.map((t) => [t.time, t.height, t.type]), [
+    [Date.UTC(2026, 10, 10, 3, 33), 4.093, 'high'], [Date.UTC(2026, 10, 10, 9, 41), 0.904, 'low'], [Date.UTC(2026, 10, 10, 15, 52), 3.962, 'high'],
+  ]);
+  const mid = tideAt(tides, (Date.UTC(2026, 10, 10, 3, 33) + Date.UTC(2026, 10, 10, 9, 41)) / 2);
+  assert.ok(Math.abs(mid.height - (4.093 + 0.904) / 2) < 1e-9);
+  assert.equal(mid.rising, false);
+  assert.equal(tideAt(tides, Date.UTC(2026, 10, 10, 12)).rising, true);
+  assert.equal(tideAt(tides, Date.UTC(2026, 10, 10, 1)), null);
+  const curve = tideCurve(tides, Date.UTC(2026, 10, 10, 4), Date.UTC(2026, 10, 10, 5), 30 * 60e3);
+  assert.equal(curve.length, 3);
+  assert.equal(tideUrl(Date.UTC(2026, 10, 9, 23, 30)), 'https://ideihm.covam.es/api-ihm/getmarea?request=gettide&id=6&format=json&date=20261109');
+});
+
+test('moonPhase identifica las fases principales', () => {
+  const newMoon = Date.UTC(2000, 0, 6, 18, 14);
+  assert.equal(moonPhase(newMoon).name, 'Luna nueva');
+  assert.ok(moonPhase(newMoon).illumination < 0.01);
+  const full = moonPhase(newMoon + 14.77 * 86400e3);
+  assert.equal(full.name, 'Luna llena');
+  assert.ok(full.illumination > 0.99);
+  assert.equal(moonPhase(newMoon + 2 * 86400e3).tides, 'vivas');
+  assert.equal(moonPhase(newMoon + 9 * 86400e3).tides, 'muertas');
 });

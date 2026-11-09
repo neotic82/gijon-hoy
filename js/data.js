@@ -647,8 +647,8 @@ export function googleCalendarUrl(event) {
 
 // Tiempo y mar: Open-Meteo (CC BY 4.0). El punto marino más cercano con datos está en mar abierto.
 export const WEATHER_URLS = {
-  forecast: 'https://api.open-meteo.com/v1/forecast?latitude=43.5357&longitude=-5.6615&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset&timezone=Europe%2FMadrid&forecast_days=2',
-  marine: 'https://marine-api.open-meteo.com/v1/marine?latitude=43.552&longitude=-5.652&current=wave_height,wave_direction,wave_period,sea_surface_temperature&timezone=Europe%2FMadrid',
+  forecast: 'https://api.open-meteo.com/v1/forecast?latitude=43.5357&longitude=-5.6615&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset,daylight_duration&timezone=Europe%2FMadrid&forecast_days=7',
+  marine: 'https://marine-api.open-meteo.com/v1/marine?latitude=43.552&longitude=-5.652&current=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period,wind_wave_height,sea_surface_temperature&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max&timezone=Europe%2FMadrid&forecast_days=7',
 };
 
 const WEATHER_CODES = {
@@ -686,39 +686,140 @@ export function summarizeWeather(data, now = Date.now()) {
       time: openMeteoTime(time),
       temp: toNumber(hourly.temperature_2m?.[i]),
       rain: toNumber(hourly.precipitation_probability?.[i]),
+      precip: toNumber(hourly.precipitation?.[i]),
       code: hourly.weather_code?.[i],
+      wind: toNumber(hourly.wind_speed_10m?.[i]),
+      dir: compass(toNumber(hourly.wind_direction_10m?.[i])),
     }))
-    .filter((p) => p.time > now && p.temp !== null);
+    .filter((p) => p.time !== null && p.time > now && p.temp !== null);
+  const days = (daily.time ?? []).map((date, i) => ({
+    date: openMeteoTime(date),
+    text: weatherText(daily.weather_code?.[i]),
+    max: toNumber(daily.temperature_2m_max?.[i]),
+    min: toNumber(daily.temperature_2m_min?.[i]),
+    rain: toNumber(daily.precipitation_probability_max?.[i]),
+    rainSum: toNumber(daily.precipitation_sum?.[i]),
+    wind: toNumber(daily.wind_speed_10m_max?.[i]),
+    gusts: toNumber(daily.wind_gusts_10m_max?.[i]),
+    dir: compass(toNumber(daily.wind_direction_10m_dominant?.[i])),
+    uv: toNumber(daily.uv_index_max?.[i]),
+    sunrise: String(daily.sunrise?.[i] ?? '').slice(11, 16),
+    sunset: String(daily.sunset?.[i] ?? '').slice(11, 16),
+    daylight: toNumber(daily.daylight_duration?.[i]),
+  })).filter((d) => d.date !== null);
+  const today = days[0];
   return {
     current: {
       temp,
       feels: toNumber(current.apparent_temperature),
       humidity: toNumber(current.relative_humidity_2m),
+      pressure: toNumber(current.pressure_msl),
+      cloud: toNumber(current.cloud_cover),
+      precip: toNumber(current.precipitation),
       text: weatherText(current.weather_code),
       wind: toNumber(current.wind_speed_10m),
       gusts: toNumber(current.wind_gusts_10m),
       dir: compass(toNumber(current.wind_direction_10m)),
     },
     today: {
-      max: toNumber(daily.temperature_2m_max?.[0]),
-      min: toNumber(daily.temperature_2m_min?.[0]),
-      rain: toNumber(daily.precipitation_probability_max?.[0]),
-      uv: toNumber(daily.uv_index_max?.[0]),
-      sunrise: String(daily.sunrise?.[0] ?? '').slice(11, 16),
-      sunset: String(daily.sunset?.[0] ?? '').slice(11, 16),
+      max: today?.max ?? null,
+      min: today?.min ?? null,
+      rain: today?.rain ?? null,
+      uv: today?.uv ?? null,
+      sunrise: today?.sunrise ?? '',
+      sunset: today?.sunset ?? '',
+      daylight: today?.daylight ?? null,
     },
     next: upcoming.filter((_, i) => i % 3 === 0).slice(0, 5),
+    hours: upcoming.slice(0, 24),
+    days,
   };
 }
 
 export function summarizeMarine(data) {
   const current = data?.current;
   if (!current) return null;
+  const daily = data.daily ?? {};
   const sea = {
     wave: toNumber(current.wave_height),
     period: toNumber(current.wave_period),
     dir: compass(toNumber(current.wave_direction)),
     sst: toNumber(current.sea_surface_temperature),
+    swell: toNumber(current.swell_wave_height),
+    swellPeriod: toNumber(current.swell_wave_period),
+    swellDir: compass(toNumber(current.swell_wave_direction)),
+    windWave: toNumber(current.wind_wave_height),
+    days: (daily.time ?? []).map((date, i) => ({
+      date: openMeteoTime(date),
+      wave: toNumber(daily.wave_height_max?.[i]),
+      period: toNumber(daily.wave_period_max?.[i]),
+      dir: compass(toNumber(daily.wave_direction_dominant?.[i])),
+      swell: toNumber(daily.swell_wave_height_max?.[i]),
+    })).filter((d) => d.date !== null && d.wave !== null),
   };
   return sea.wave === null && sea.sst === null ? null : sea;
+}
+
+// Mareas: predicción oficial del Instituto Hidrográfico de la Marina (puerto de Gijón, id 6).
+// Sus horas van en UTC (comprobado: no cambian con el horario de verano y coinciden con tablas en hora local menos 1 h en noviembre).
+export const tideUrl = (ms) => {
+  const d = new Date(ms);
+  return `https://ideihm.covam.es/api-ihm/getmarea?request=gettide&id=6&format=json&date=${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+};
+
+export function parseTides(responses) {
+  const events = new Map();
+  for (const response of Array.isArray(responses) ? responses : []) {
+    const data = response?.mareas;
+    const [y, m, d] = String(data?.fecha ?? '').split('-').map(Number);
+    if (!y || !m || !d) continue;
+    for (const tide of data?.datos?.marea ?? []) {
+      const [hh, mm] = String(tide.hora ?? '').split(':').map(Number);
+      const height = toNumber(tide.altura);
+      const type = /pleamar/i.test(tide.tipo) ? 'high' : /bajamar/i.test(tide.tipo) ? 'low' : null;
+      if (!type || height === null || !Number.isFinite(hh)) continue;
+      const time = Date.UTC(y, m - 1, d, hh, mm || 0);
+      events.set(time, { time, height, type });
+    }
+  }
+  return [...events.values()].sort((a, b) => a.time - b.time);
+}
+
+// Altura aproximada entre dos extremos con la curva coseno habitual en mareas semidiurnas.
+export function tideAt(events, time) {
+  const i = events.findIndex((e) => e.time > time);
+  if (i <= 0) return null;
+  const last = events[i - 1];
+  const next = events[i];
+  const f = (time - last.time) / (next.time - last.time);
+  return { height: last.height + (next.height - last.height) * (1 - Math.cos(Math.PI * f)) / 2, rising: next.type === 'high', last, next };
+}
+
+export function tideCurve(events, from, to, step = 15 * 60e3) {
+  const points = [];
+  for (let time = from; time <= to; time += step) {
+    const state = tideAt(events, time);
+    if (state) points.push({ time, value: state.height });
+  }
+  return points;
+}
+
+// Fase lunar por cálculo astronómico aproximado (mes sinódico desde una luna nueva conocida).
+const SYNODIC = 29.530588853;
+const KNOWN_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14);
+const MOON_NAMES = ['Luna nueva', 'Luna creciente', 'Cuarto creciente', 'Gibosa creciente', 'Luna llena', 'Gibosa menguante', 'Cuarto menguante', 'Luna menguante'];
+
+export function moonPhase(ms) {
+  const age = ((((ms - KNOWN_NEW_MOON) / 86400e3) % SYNODIC) + SYNODIC) % SYNODIC;
+  const illumination = (1 - Math.cos((2 * Math.PI * age) / SYNODIC)) / 2;
+  // Las mareas vivas llegan uno o dos días después de la luna nueva o llena.
+  const lagged = (age - 1.5 + SYNODIC) % SYNODIC;
+  const toSyzygy = Math.min(lagged, Math.abs(lagged - SYNODIC / 2), SYNODIC - lagged);
+  const toQuarter = Math.min(Math.abs(lagged - SYNODIC / 4), Math.abs(lagged - (3 * SYNODIC) / 4));
+  return {
+    age,
+    illumination,
+    name: MOON_NAMES[Math.round((age / SYNODIC) * 8) % 8],
+    tides: toSyzygy <= 3 ? 'vivas' : toQuarter <= 3 ? 'muertas' : '',
+  };
 }

@@ -1,4 +1,4 @@
-const VERSION = 'v15';
+const VERSION = 'v16';
 const SHELL = `gijon-hoy-shell-${VERSION}`;
 const DATA = `gijon-hoy-data-${VERSION}`;
 const TILES = `gijon-hoy-tiles-${VERSION}`;
@@ -88,7 +88,7 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (['opendata.gijon.es', 'drupal.gijon.es', 'api.open-meteo.com', 'marine-api.open-meteo.com'].includes(url.hostname)) event.respondWith(networkFirst(request));
+  if (['opendata.gijon.es', 'drupal.gijon.es', 'api.open-meteo.com', 'marine-api.open-meteo.com', 'ideihm.covam.es'].includes(url.hostname)) event.respondWith(networkFirst(request));
   else if (url.hostname === 'tile.openstreetmap.org') event.respondWith(tile(request, event));
   else if (url.origin === self.location.origin) event.respondWith(shell(request, event));
 });
