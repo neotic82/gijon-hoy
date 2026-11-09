@@ -14,7 +14,7 @@ const state = {
   air: null, airError: false, airLoadedAt: 0,
   feedsLoadedAt: 0,
   events: null, eventsError: false, agendaFromWeb: false,
-  agendaFilter: { q: '', when: 'all', topic: '' }, agendaLimit: 40,
+  agendaFilter: { q: '', when: 'today', topic: '' }, agendaLimit: 40,
   notices: null, noticesError: false, noticesFromWeb: false, noticesExpanded: false,
   tap: null, bathing: null, waterError: false, waterParam: 'clorolibre',
   places: {}, placesFailed: new Set(),
@@ -416,6 +416,15 @@ function renderAgendaList() {
       h('summary', {}, `Exposiciones y actividades en curso (${running.length})`),
       running.map(eventRow)),
     shown.map(eventRow),
+    when === 'today' && !timeline.length && h('div', { class: 'message' }, 'Hoy no quedan más actos con fecha concreta.',
+      h('button', {
+        type: 'button',
+        onclick: () => {
+          state.agendaFilter.when = 'week';
+          renderAgendaFilters();
+          renderAgendaList();
+        },
+      }, 'Ver los próximos 7 días')),
     timeline.length > shown.length && h('button', { class: 'more', onclick: () => { state.agendaLimit += 40; renderAgendaList(); } }, `Ver más (${timeline.length - shown.length})`),
   );
 }
