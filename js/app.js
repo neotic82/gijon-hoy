@@ -1229,9 +1229,18 @@ function focusPlace(place) {
 }
 
 // Navegación
+const PAGE_TITLES = {
+  hoy: 'Gijón hoy: tiempo, mareas, agenda y playas de Gijón',
+  tiempo: 'Tiempo y mareas en Gijón hoy · Gijón hoy',
+  agenda: 'Agenda de Gijón: qué hacer hoy · Gijón hoy',
+  mapa: 'Mapa de Gijón: playas, parques, bici y aparcamientos · Gijón hoy',
+  agua: 'Calidad del agua en Gijón: grifo y playas · Gijón hoy',
+};
+
 function route() {
   const tab = ['hoy', 'mapa', 'agenda', 'agua', 'tiempo'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'hoy';
   document.querySelectorAll('.view').forEach((view) => { view.hidden = view.id !== `view-${tab}`; });
+  document.title = PAGE_TITLES[tab];
   document.querySelectorAll('[data-tab]').forEach((link) => {
     if (link.dataset.tab === tab) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');

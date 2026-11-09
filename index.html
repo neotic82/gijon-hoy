@@ -3,8 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Gijón hoy</title>
-  <meta name="description" content="Calidad del aire, agenda, playas y lugares de Gijón a partir de sus datos abiertos.">
+  <title>Gijón hoy: tiempo, mareas, agenda y playas de Gijón</title>
+  <meta name="description" content="Todo Gijón en una app gratuita: el tiempo y las mareas de hoy, la agenda de actos, avisos de tráfico y bus, calidad del aire y del agua, playas y mapa.">
+  <link rel="canonical" href="https://neotic82.github.io/gijon-hoy/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="geo.region" content="ES-AS">
+  <meta name="geo.placename" content="Gijón">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Gijón hoy">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Gijón hoy: tiempo, mareas, agenda y playas de Gijón">
+  <meta property="og:description" content="Todo Gijón en una app gratuita: el tiempo y las mareas de hoy, la agenda de actos, avisos de tráfico y bus, calidad del aire y del agua, playas y mapa.">
+  <meta property="og:url" content="https://neotic82.github.io/gijon-hoy/">
+  <meta property="og:image" content="https://neotic82.github.io/gijon-hoy/icons/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Gijón hoy: tiempo, mareas, agenda y playas de Gijón en una sola app">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Gijón hoy: tiempo, mareas, agenda y playas de Gijón">
+  <meta name="twitter:description" content="Todo Gijón en una app gratuita: el tiempo y las mareas de hoy, la agenda de actos, avisos de tráfico y bus, calidad del aire y del agua, playas y mapa.">
+  <meta name="twitter:image" content="https://neotic82.github.io/gijon-hoy/icons/og.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Gijón hoy",
+    "url": "https://neotic82.github.io/gijon-hoy/",
+    "description": "Todo Gijón en una app gratuita: el tiempo y las mareas de hoy, la agenda de actos, avisos de tráfico y bus, calidad del aire y del agua, playas y mapa.",
+    "image": "https://neotic82.github.io/gijon-hoy/icons/og.png",
+    "inLanguage": "es",
+    "applicationCategory": "LifestyleApplication",
+    "operatingSystem": "Web, iOS, Android",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+    "about": { "@type": "City", "name": "Gijón", "sameAs": "https://es.wikipedia.org/wiki/Gij%C3%B3n" },
+    "keywords": "tiempo en Gijón, mareas Gijón, agenda Gijón, qué hacer en Gijón, playas de Gijón, calidad del aire Gijón, avisos de tráfico Gijón"
+  }
+  </script>
   <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)">
   <link rel="preload" href="vendor/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -18,6 +53,7 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+  <noscript><p class="noscript">Gijón hoy necesita JavaScript para mostrar el tiempo, las mareas, la agenda y el resto de datos actualizados de Gijón.</p></noscript>
   <header class="top">
     <div class="brand">
       <img src="icons/icon-192.png" alt="" width="32" height="32">
@@ -76,6 +112,7 @@
         <div id="beaches" class="scroller"></div>
       </section>
       <footer class="credits">
+        <p class="about"><strong>Gijón hoy</strong> reúne en una sola app gratuita lo que pasa hoy en Gijón: el tiempo y la previsión de 7 días, las mareas del puerto, la agenda de actos y qué hacer, los avisos de tráfico y de los autobuses de EMTUSA, la calidad del aire y del agua, las playas y un mapa con parques, museos, alojamientos, carriles bici y aparcamientos. Se instala en el móvil como una app y usa datos abiertos oficiales.</p>
         <p>Proyecto independiente, sin relación oficial con el Ayuntamiento.
           Datos: <a href="https://www.gijon.es/es/datos" rel="noopener">Ayuntamiento de Gijón</a>,
           <a href="https://creativecommons.org/licenses/by/4.0/deed.es" rel="noopener">CC BY 4.0</a>, limpiados y combinados para esta app.

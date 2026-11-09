@@ -357,6 +357,8 @@ button, select, input { font: inherit; color: inherit; }
 .zone.warn .bath-mark { background: var(--l3); }
 
 .credits { color: var(--muted); font-size: .75rem; margin-top: 18px; padding: 0 2px; }
+.credits .about { margin-bottom: 8px; font-size: .8rem; line-height: 1.5; }
+.noscript { margin: 16px; padding: 12px 14px; border-radius: var(--radius-s); background: var(--surface-2); }
 
 #view-mapa { padding: 0; max-width: none; }
 #view-mapa:not([hidden]) { position: relative; display: flex; flex-direction: column; height: calc(100dvh - var(--top-h) - var(--nav-space) - 1px); }
