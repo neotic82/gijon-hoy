@@ -595,6 +595,17 @@ function bathingSection(bathing, measured) {
   );
 }
 
+// Si la versión reducida falla, se prueba una vez con la original.
+function imageFallback(event, place, giveUp) {
+  const img = event.target;
+  if (place.imageFull && img.src !== place.imageFull && !img.dataset.retried) {
+    img.dataset.retried = '1';
+    img.src = place.imageFull;
+  } else {
+    giveUp();
+  }
+}
+
 function renderBeaches() {
   const beaches = state.places.playas;
   if (!beaches) {
@@ -604,7 +615,7 @@ function renderBeaches() {
   // El conjunto «Playas» incluye también una ficha de zonas para mascotas, que sigue en el mapa.
   const sorted = beaches.filter((b) => !/mascotas/i.test(b.title)).sort((a, b) => (reference() ? distanceKm(reference(), a) - distanceKm(reference(), b) : a.lon - b.lon));
   fill('beaches', sorted.map((beach) => h('button', { class: 'beach', onclick: () => focusPlace(beach) },
-    beach.image ? h('img', { class: 'photo', src: beach.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: (e) => e.target.replaceWith(h('span', { class: 'photo' })) }) : h('span', { class: 'photo' }),
+    beach.image ? h('img', { class: 'photo', src: beach.image, alt: '', loading: 'lazy', decoding: 'async', width: 240, height: 124, referrerpolicy: 'no-referrer', onerror: (e) => imageFallback(e, beach, () => e.target.replaceWith(h('span', { class: 'photo' }))) }) : h('span', { class: 'photo' }),
     h('div', {},
       h('h3', {}, beach.title),
       h('p', {}, reference() ? `A ${number(distanceKm(reference(), beach), 1)} km` : beach.address || 'Gijón'),
@@ -1036,7 +1047,7 @@ function directions(item) {
 
 function placePopup(place, label) {
   return h('div', { class: 'pop' },
-    place.image && h('img', { src: place.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: (e) => e.target.remove() }),
+    place.image && h('img', { src: place.image, alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer', onerror: (e) => imageFallback(e, place, () => e.target.remove()) }),
     h('small', {}, label),
     h('h3', {}, place.title),
     place.address && h('p', {}, place.address),

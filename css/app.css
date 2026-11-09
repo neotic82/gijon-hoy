@@ -357,6 +357,7 @@ button, select, input { font: inherit; color: inherit; }
 .zone.warn .bath-mark { background: var(--l3); }
 
 .credits { color: var(--muted); font-size: .75rem; margin-top: 18px; padding: 0 2px; }
+.credits a, .note a, .callout a, .message a, .sub a { text-decoration: underline; text-underline-offset: 2px; }
 .credits .about { margin-bottom: 8px; font-size: .8rem; line-height: 1.5; }
 .noscript { margin: 16px; padding: 12px 14px; border-radius: var(--radius-s); background: var(--surface-2); }
 

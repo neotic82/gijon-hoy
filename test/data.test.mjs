@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aqiLevel, bathingForBeach, buildIcs, weatherIcon, moonPhase, parseTides, tideAt, tideCurve, tideUrl, compareLines, compass, googleCalendarUrl, parseKml, summarizeMarine, summarizeWeather, weatherText, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
+  aqiLevel, bathingForBeach, buildIcs, lightImage, weatherIcon, moonPhase, parseTides, tideAt, tideCurve, tideUrl, compareLines, compass, googleCalendarUrl, parseKml, summarizeMarine, summarizeWeather, weatherText, decodeEntities, districtCentroids, inDistrict, linesAffected, nearestDistrict, parseLineNames, isLongRunning, normalizeEvents, normalizeNotices, normalizePlaces, occursBetween, parseCoords, parseSessions, plainText, safeUrl, summarizeAir, summarizeBathing, summarizeTapWater, toNumber,
 } from '../js/data.js';
 
 test('toNumber admite los tipos mezclados del portal', () => {
@@ -44,6 +44,7 @@ test('normalizePlaces limpia campos y extrae líneas de bus sin repetir', () => 
   assert.equal(place.description, 'Arena');
   assert.deepEqual(place.buses, ['14', '25']);
   assert.equal(place.image, 'https://a.es/i.jpg');
+  assert.equal(place.imageFull, 'https://a.es/i.jpg');
 });
 
 const air = (rows) => ({ calidadairemediatemporales: { calidadairemediatemporal: rows } });
@@ -363,4 +364,11 @@ test('weatherIcon elige el icono por código y por día o noche', () => {
   assert.equal(weatherIcon(73), 'snow');
   assert.equal(weatherIcon(96), 'storm');
   assert.equal(weatherIcon(undefined), '');
+});
+
+test('lightImage pide la versión reducida solo a las imágenes originales de gijon.es', () => {
+  assert.equal(lightImage('https://www.gijon.es/sites/default/files/2019-02/playa.jpg'), 'https://www.gijon.es/sites/default/files/styles/imagen_4_3/public/2019-02/playa.jpg');
+  assert.equal(lightImage('https://www.gijon.es/sites/default/files/styles/imagen_4_3/public/2019-02/playa.jpg'), 'https://www.gijon.es/sites/default/files/styles/imagen_4_3/public/2019-02/playa.jpg');
+  assert.equal(lightImage('https://aytogijon.toools.es/sites/default/files/x.png'), 'https://aytogijon.toools.es/sites/default/files/x.png');
+  assert.equal(lightImage(''), '');
 });

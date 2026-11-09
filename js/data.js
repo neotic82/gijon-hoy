@@ -155,6 +155,13 @@ export function distanceKm(a, b) {
   return 6371 * 2 * Math.asin(Math.sqrt(h));
 }
 
+// La web municipal (Drupal) sirve una versión reducida de cada imagen (890 px, ~40 KB frente a varios MB).
+const DRUPAL_FILES = 'https://www.gijon.es/sites/default/files/';
+export function lightImage(url) {
+  if (!url.startsWith(DRUPAL_FILES) || url.startsWith(`${DRUPAL_FILES}styles/`)) return url;
+  return `${DRUPAL_FILES}styles/imagen_4_3/public/${url.slice(DRUPAL_FILES.length)}`;
+}
+
 export function normalizePlaces(rows, category) {
   if (!Array.isArray(rows)) return [];
   return rows.flatMap((row, index) => {
@@ -171,7 +178,8 @@ export function normalizePlaces(rows, category) {
       phone: plainText(row.telefono),
       web: safeUrl(row.web),
       description: plainText(row.descripcion),
-      image: safeUrl(row.imagen),
+      image: lightImage(safeUrl(row.imagen)),
+      imageFull: safeUrl(row.imagen),
       buses: [...new Set(buses)],
       district: plainText(row.distrito),
       lineNames: [...parseLineNames(row.lineas_bus)],
