@@ -1,4 +1,4 @@
-const VERSION = 'v20';
+const VERSION = 'v21';
 const SHELL = `gijon-hoy-shell-${VERSION}`;
 const DATA = `gijon-hoy-data-${VERSION}`;
 const TILES = `gijon-hoy-tiles-${VERSION}`;
@@ -11,6 +11,7 @@ const SHELL_FILES = [
   'css/app.css',
   'js/app.js',
   'js/data.js',
+  'js/icons.js',
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -84,11 +85,17 @@ async function tile(request, event) {
   return response;
 }
 
+const SCOPE_PATH = new URL(self.registration.scope).pathname;
+const isAppPage = (url) => url.pathname === SCOPE_PATH || url.pathname === `${SCOPE_PATH}index.html`;
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (['opendata.gijon.es', 'drupal.gijon.es', 'api.open-meteo.com', 'marine-api.open-meteo.com', 'ideihm.covam.es'].includes(url.hostname)) event.respondWith(networkFirst(request));
   else if (url.hostname === 'tile.openstreetmap.org') event.respondWith(tile(request, event));
-  else if (url.origin === self.location.origin) event.respondWith(shell(request, event));
+  else if (url.origin !== self.location.origin) return;
+  // Las páginas estáticas (mareas/, agenda/…) van directas a la red: no son la app ni se guardan como ella.
+  else if (request.mode === 'navigate' && !isAppPage(url)) return;
+  else event.respondWith(shell(request, event));
 });
