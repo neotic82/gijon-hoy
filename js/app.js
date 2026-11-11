@@ -1257,6 +1257,8 @@ function updateOnline() {
 function start() {
   byId('today').textContent = new Intl.DateTimeFormat('es-ES', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
   addEventListener('hashchange', route);
+  // Estadísticas (GoatCounter): la primera vista la cuenta el propio script; aquí, los cambios de sección (la ruta con #sección la pone window.goatcounter.path en index.html).
+  addEventListener('hashchange', () => window.goatcounter?.count?.());
   addEventListener('online', updateOnline);
   addEventListener('offline', updateOnline);
   document.addEventListener('visibilitychange', () => {

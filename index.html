@@ -51,6 +51,9 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="css/app.css">
+  <!-- Estadísticas de visitas sin cookies (GoatCounter). Cada sección de la app cuenta como una página: /gijon-hoy/#tiempo… -->
+  <script>window.goatcounter = { path: (p) => p + (location.hash && location.hash !== '#hoy' ? location.hash : '') };</script>
+  <script data-goatcounter="https://gijonhoy.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 </head>
 <body>
   <noscript><p class="noscript">Gijón hoy necesita JavaScript para mostrar el tiempo, las mareas, la agenda y el resto de datos actualizados de Gijón.</p></noscript>

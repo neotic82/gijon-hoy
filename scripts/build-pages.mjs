@@ -177,6 +177,7 @@ function layout({ path, title, description, h1, lead, body, crumbs, ld = [], ima
   <link rel="apple-touch-icon" href="${root}icons/icon-180.png">
   <link rel="stylesheet" href="${root}css/app.css">
   <link rel="stylesheet" href="${root}css/pages.css">
+  <script data-goatcounter="https://gijonhoy.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 </head>
 <body class="page">
   <header class="top">
